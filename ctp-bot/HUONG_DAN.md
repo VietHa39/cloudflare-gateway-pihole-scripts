@@ -142,7 +142,13 @@ Bot **luôn nhắc lại số tiền** nó hiểu. Nếu sai, bấm **🗑 Xóa 
 
 **Sửa tên trường, ngày, tỉnh…**: sửa thẳng trong tab **Chuyen** trên app Google Sheets ở điện thoại. Khi xuất file, bot tự tính lại số ngày.
 
-**Tháng tính tiền** là tháng của **ngày đi**. Chuyến 30/9–2/10 tính vào tháng 9. Muốn tính vào tháng khác thì sửa cột *Tháng TT* trong tab Chuyen, ví dụ `10/2026`.
+**Xóa chuyến hoặc khoản chi**: luôn xóa **qua bot** (`/xem`, rồi bấm 🗑). **Đừng xóa dòng trong Sheet**, vì chi phí của chuyến đó sẽ bị mồ côi.
+
+**Tháng tính tiền** là tháng của **ngày đi**. Chuyến 30/9–2/10 tính vào tháng 9. Khi bạn sửa ngày trong Sheet, tháng tính tiền cũng đổi theo. Muốn tính vào tháng khác thì điền cột *Tháng TT* trong tab Chuyen, ví dụ `10/2026`. Để trống cột này nghĩa là tính theo ngày đi.
+
+**Gõ chi phí vào hôm sau**: nếu đã hơn 12 giờ kể từ lần nhập cuối, bot sẽ hỏi *"Thêm vào chuyến … ?"* rồi mới lưu. Nhờ vậy chi phí không bị ghi nhầm vào chuyến cũ.
+
+Chữ **k** đứng riêng sau một số lớn được hiểu là "không". Ví dụ `150000 k có hđ` là 150.000đ **không** hóa đơn, còn `864 k` là 864.000đ.
 
 ### Cuối tháng
 

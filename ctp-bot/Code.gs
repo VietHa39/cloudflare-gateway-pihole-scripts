@@ -69,7 +69,7 @@ function HELP_() {
     '/xuat — xuất PDF + Excel để in (<code>/xuat 9</code>)\n' +
     '/huy — hủy thao tác đang dở\n\n' +
     'Gõ nhanh chi phí: <code>ks 1tr8 hđ 145</code> · <code>xăng 550k khd</code> · <code>tk 1.2tr hđ 88</code> · <code>khác vé xe 120k khd</code>\n' +
-    'Sửa tên trường, ngày… thì sửa thẳng trong Google Sheet.';
+    'Sửa tên trường, ngày… thì sửa thẳng trong Google Sheet. Xóa thì dùng /xem (đừng xóa dòng trong Sheet).';
 }
 
 /* ======================= WEBHOOK ======================= */
@@ -132,7 +132,13 @@ function nhanChu_(msg, P) {
   if (!msg || !msg.text) return;
   const pin = P.getProperty('PIN');
   const m = msg.text.trim().match(/^\/start\s+(\d{6})$/);
-  if (!pin || !m || m[1] !== pin) return;
+  if (!pin || !m) return;
+  if (m[1] !== pin) { // sai quá 10 lần → hủy PIN, phải chạy lại caiDat()
+    const sai = +(P.getProperty('PIN_SAI') || 0) + 1;
+    if (sai >= 10) { P.deleteProperty('PIN'); P.deleteProperty('PIN_SAI'); } else P.setProperty('PIN_SAI', String(sai));
+    return;
+  }
+  P.deleteProperty('PIN_SAI');
   P.setProperty('OWNER_ID', String(msg.from.id));
   P.deleteProperty('PIN');
   CHAT_ = msg.chat.id;
@@ -156,7 +162,17 @@ function xuLyTin_(text) {
     return;
   }
   const st = getSt_();
-  if (!st) { send_('Gõ /moi để tạo chuyến mới, /help để xem các lệnh.'); return; }
+  if (!st) {
+    const t = docNhanh_(text) && chuyenGanNhat_();
+    if (t) {
+      setSt_({ f: 'cho', b: 'cho', id: t.id, text: text });
+      send_('Thêm "<b>' + esc_(text) + '</b>" vào chuyến <b>' + t.id + '</b> (' + nhanNgay_(t.tu, t.den) + ', ' + esc_(t.tinh) + ')?',
+        [[nut_('✅ Thêm vào ' + t.id, 'qc|' + t.id)], [nut_('Không (chuyến khác thì gõ /cp mã chuyến)', 'xn|')]]);
+      return;
+    }
+    send_('Gõ /moi để tạo chuyến mới, /cp để thêm chi phí, /help để xem các lệnh.');
+    return;
+  }
   buocChu_(st, text);
 }
 
@@ -192,7 +208,7 @@ function buocChu_(st, text) {
     case 'menu': {
       const q = docNhanh_(text);
       if (!q) {
-        send_('Bấm nút loại chi phí, hoặc gõ nhanh: <code>ks 1tr8 hđ 145</code>, <code>xăng 550k khd</code>. Hết chi phí thì bấm ✔ Xong.', banPhimCP_());
+        send_('Bấm nút loại chi phí, hoặc gõ nhanh: <code>ks 1tr8 hđ 145</code>, <code>xăng 550k khd</code>. Hết chi phí thì bấm ✔ Xong.', banPhimCP_(st.id));
         return;
       }
       st.c = { loai: q.loai, ghiChu: q.ghiChu };
@@ -202,7 +218,11 @@ function buocChu_(st, text) {
       return;
     }
     case 'kh': st.c.ghiChu = text.slice(0, 100); st.b = 'tien'; setSt_(st); hoiTien_(st); return;
-    case 'tien': nhapTien_(st, text); return;
+    case 'tien': {
+      const q = docNhanh_(text); // đang hỏi tiền khách sạn mà gõ "xăng 500k" → đổi loại
+      if (q && q.rest) { st.c = { loai: q.loai, ghiChu: q.ghiChu }; setSt_(st); nhapTien_(st, q.rest); return; }
+      nhapTien_(st, text); return;
+    }
     case 'hd': {
       const t = boDau_(text).trim();
       if (/^(co|c|co hd|co hoa don|yes|1)$/.test(t)) { st.c.hd = true; st.b = 'sohd'; setSt_(st); hoiSoHD_(); }
@@ -210,9 +230,20 @@ function buocChu_(st, text) {
       else send_('Bấm <b>Có hóa đơn</b> hoặc <b>Không hóa đơn</b> ở trên.');
       return;
     }
-    case 'sohd':
-      st.c.so = text.replace(/^\s*(số|so)?\s*(hđ|hd)\s*[:#.]?\s*/i, '').trim().slice(0, 40);
-      luuCP_(st); return;
+    case 'sohd': {
+      if (docNhanh_(text)) { // gõ luôn khoản khác → lưu khoản đang dở (không số HĐ) rồi xử lý khoản mới
+        st.c.so = ''; luuCP_(st);
+        const st2 = getSt_();
+        if (st2 && st2.b === 'menu') buocChu_(st2, text);
+        return;
+      }
+      const so = text.replace(/^\s*(số|so)?\s*(hđ|hd)\s*[:#.]?\s*/i, '').trim();
+      if (!so || so.length > 30 || so.split(/\s+/).length > 3) {
+        send_('Số hóa đơn thường ngắn (vd <code>0001234</code>). Gõ lại, hoặc bấm Bỏ qua.', [[nut_('Bỏ qua', 'sh|-')]]);
+        return;
+      }
+      st.c.so = so; luuCP_(st); return;
+    }
     default:
       clrSt_(); send_('Gõ /moi để tạo chuyến mới.');
   }
@@ -232,12 +263,12 @@ function xuLyNut_(cq) {
       case 'nd': // ngày đi
         if (!dung(['moi', 'lai'], 'ngay')) { toast = 'Nút này đã cũ.'; break; }
         boNut_(cq);
-        st.t.tu = v === '1' ? congNgay_(homNay_(), -1) : homNay_();
+        st.t.tu = /^\d{4}-\d\d-\d\d$/.test(v) ? v : v === '1' ? congNgay_(homNay_(), -1) : homNay_();
         st.b = 'ngayve'; setSt_(st); hoiNgayVe_(st); break;
       case 've': // ngày về
         if (!dung(['moi', 'lai'], 'ngayve')) { toast = 'Nút này đã cũ.'; break; }
         boNut_(cq);
-        if (datNgay_(st, st.t.tu, v === '1' ? homNay_() : st.t.tu)) sauNgay_(st);
+        if (datNgay_(st, st.t.tu, /^\d{4}-\d\d-\d\d$/.test(v) ? v : v === '1' ? homNay_() : st.t.tu)) sauNgay_(st);
         break;
       case 'ng': // người đi cùng
         if (!dung(['moi'], 'nguoi')) { toast = 'Nút này đã cũ.'; break; }
@@ -263,14 +294,28 @@ function xuLyNut_(cq) {
       case 'nc': // nội dung
         if (!dung(['moi'], 'nd') || !st.ds || !st.ds[+v]) { toast = 'Nút này đã cũ.'; break; }
         boNut_(cq); st.t.nd = st.ds[+v]; luuChuyenMoi_(st); break;
-      case 'cl': // loại chi phí
-        if (!dung(['cp'])) { toast = 'Chuyến này đã xong. Gõ /cp để thêm chi phí.'; break; }
-        if (v === 'OK') { boNut_(cq); clrSt_(); xongCP_(st.id); break; }
-        if (!LOAI[v]) { toast = 'Nút này đã cũ.'; break; }
-        st.c = { loai: LOAI[v], ghiChu: '' };
-        if (v === 'KH') { st.b = 'kh'; setSt_(st); hoiKhac_(); }
-        else { st.b = 'tien'; setSt_(st); hoiTien_(st); }
+      case 'cl': { // loại chi phí: "cl|KS|2609001"
+        const ma = v.split('|')[0], id = v.split('|')[1] || (st && st.f === 'cp' ? st.id : '');
+        const t = id && docChuyen_(id);
+        if (!t) { toast = 'Chuyến này không còn. Gõ /cp để thêm chi phí.'; break; }
+        const dangMo = st && st.f === 'cp' && st.id === id;
+        if (ma === 'OK') { boNut_(cq); if (dangMo) clrSt_(); xongCP_(id); break; }
+        if (!LOAI[ma]) { toast = 'Nút này đã cũ.'; break; }
+        if (!dangMo) boDo_(st);
+        const s2 = dangMo ? st : { f: 'cp', b: 'menu', id: id };
+        s2.c = { loai: LOAI[ma], ghiChu: '' };
+        if (ma === 'KH') { s2.b = 'kh'; setSt_(s2); hoiKhac_(); }
+        else { s2.b = 'tien'; setSt_(s2); hoiTien_(s2); }
         break;
+      }
+      case 'qc': { // thêm khoản gõ nhanh vào chuyến gần nhất
+        if (!dung(['cho']) || st.id !== v) { toast = 'Nút này đã cũ.'; break; }
+        boNut_(cq);
+        const text = st.text;
+        setSt_({ f: 'cp', b: 'menu', id: v });
+        buocChu_(getSt_(), text);
+        break;
+      }
       case 'hd':
         if (!dung(['cp'], 'hd')) { toast = 'Nút này đã cũ.'; break; }
         boNut_(cq);
@@ -286,11 +331,11 @@ function xuLyNut_(cq) {
       case 'ct': {
         const t = docChuyen_(v);
         if (!t) { toast = 'Không thấy chuyến này.'; break; }
-        setSt_({ f: 'cp', b: 'menu', id: t.id }); menuCP_(t.id); break;
+        boDo_(st); setSt_({ f: 'cp', b: 'menu', id: t.id }); menuCP_(t.id); break;
       }
       case 'xt': send_('Xóa hẳn chuyến <b>' + esc_(v) + '</b> và các chi phí của nó?', [[nut_('🗑 Xóa chuyến ' + v, 'xy|' + v), nut_('Không', 'xn|')]]); break;
       case 'xy': boNut_(cq); toast = xoaChuyen_(v); break;
-      case 'xn': boNut_(cq); toast = 'Không xóa.'; break;
+      case 'xn': boNut_(cq); if (st && st.f === 'cho') clrSt_(); toast = 'Đã bỏ.'; break;
       default: toast = 'Nút này đã cũ.';
     }
   } finally {
@@ -300,8 +345,14 @@ function xuLyNut_(cq) {
 
 /* ======================= LUỒNG TẠO CHUYẾN ======================= */
 
+// Đang nhập dở 1 chuyến mà bắt đầu việc khác → báo cho biết là đã bỏ
+function boDo_(st) {
+  if (st && (st.f === 'moi' || st.f === 'lai') && st.b !== 'ngay') send_('(Đã bỏ chuyến đang nhập dở, chưa lưu.)');
+}
+
 function batDauMoi_() {
   const cfg = cauHinh_();
+  boDo_(getSt_());
   setSt_({ f: 'moi', b: 'ngay', t: { nguoi: [cfg.nguoiDeNghi] } });
   hoiNgay_();
 }
@@ -309,6 +360,7 @@ function batDauMoi_() {
 function batDauLai_() {
   const cu = chuyenGanNhat_();
   if (!cu) { send_('Chưa có chuyến nào để chép. Gõ /moi.'); return; }
+  boDo_(getSt_());
   setSt_({ f: 'lai', b: 'ngay', t: { nguoi: cu.nguoi, tinh: cu.tinh, pt: cu.pt, nd: cu.nd, truongCu: cu.truong } });
   send_('Chép chuyến <b>' + cu.id + '</b>: ' + esc_(cu.tinh) + ' · ' + esc_(tenNgan_(cu.nguoi)) + ' · ' + esc_(cu.pt) + ' · ' + esc_(cu.nd));
   hoiNgay_();
@@ -317,13 +369,13 @@ function batDauLai_() {
 function hoiNgay_() {
   const hn = homNay_();
   send_('📅 <b>Ngày đi?</b> Bấm nút, hoặc gõ 1 ngày (<code>10/9</code>) hay khoảng ngày (<code>10/9-12/9</code>).',
-    [[nut_('Hôm nay ' + dm_(hn), 'nd|0'), nut_('Hôm qua ' + dm_(congNgay_(hn, -1)), 'nd|1')]]);
+    [[nut_('Hôm nay ' + dm_(hn), 'nd|' + hn), nut_('Hôm qua ' + dm_(congNgay_(hn, -1)), 'nd|' + congNgay_(hn, -1))]]);
 }
 
 function hoiNgayVe_(st) {
   const hn = homNay_();
   const kb = [[nut_('Đi trong ngày (' + dm_(st.t.tu) + ')', 've|0')]];
-  if (st.t.tu < hn) kb[0].push(nut_('Về hôm nay ' + dm_(hn), 've|1'));
+  if (st.t.tu < hn) kb[0].push(nut_('Về hôm nay ' + dm_(hn), 've|' + hn));
   send_('📅 <b>Ngày về?</b> Bấm nút hoặc gõ ngày (vd <code>' + dm_(congNgay_(st.t.tu, 2)) + '</code>).', kb);
 }
 
@@ -462,23 +514,25 @@ function moTaChuyen_(t) {
 function batDauCP_(ts) {
   const t = ts ? docChuyen_(ts) : chuyenGanNhat_();
   if (!t) { send_(ts ? 'Không thấy chuyến ' + esc_(ts) + '.' : 'Chưa có chuyến nào. Gõ /moi.'); return; }
+  boDo_(getSt_());
   setSt_({ f: 'cp', b: 'menu', id: t.id });
   menuCP_(t.id, 'Chuyến <b>' + t.id + '</b> · ' + nhanNgay_(t.tu, t.den) + ' · ' + esc_(t.tinh));
 }
 
 function menuCP_(id, dau) {
-  send_((dau ? dau + '\n\n' : '') + '💵 Thêm chi phí cho chuyến <b>' + id + '</b>? Bấm loại, hoặc gõ nhanh: <code>ks 1tr8 hđ 145</code>', banPhimCP_());
+  send_((dau ? dau + '\n\n' : '') + '💵 Thêm chi phí cho chuyến <b>' + id + '</b>? Bấm loại, hoặc gõ nhanh: <code>ks 1tr8 hđ 145</code>', banPhimCP_(id));
 }
 
-function banPhimCP_(them) {
-  const kb = [[nut_('🏨 Khách sạn', 'cl|KS'), nut_('⛽ Xăng xe', 'cl|XX')], [nut_('🍽 Tiếp khách', 'cl|TK'), nut_('🧾 Khác', 'cl|KH')], [nut_('✔ Xong', 'cl|OK')]];
+function banPhimCP_(id, them) {
+  const d = x => 'cl|' + x + '|' + id;
+  const kb = [[nut_('🏨 Khách sạn', d('KS')), nut_('⛽ Xăng xe', d('XX'))], [nut_('🍽 Tiếp khách', d('TK')), nut_('🧾 Khác', d('KH'))], [nut_('✔ Xong', d('OK'))]];
   return them ? them.concat(kb) : kb;
 }
 
 function hoiKhac_() { send_('🧾 Khoản gì? (vd <code>vé xe khách</code>, <code>gửi xe</code>)'); }
 
 function hoiTien_(st) {
-  send_('💵 Số tiền <b>' + esc_(st.c.loai + (st.c.ghiChu ? ' (' + st.c.ghiChu + ')' : '')) + '</b>? vd <code>1tr8</code>, <code>864k</code>, <code>864000</code>\n' +
+  send_('💵 Số tiền <b>' + esc_(st.c.loai + (st.c.ghiChu ? ' (' + st.c.ghiChu + ')' : '')) + '</b> (chuyến ' + st.id + ')? vd <code>1tr8</code>, <code>864k</code>, <code>864000</code>\n' +
     'Gõ luôn hóa đơn cũng được: <code>1tr8 hđ 145</code> hoặc <code>1tr8 khd</code>');
 }
 
@@ -505,7 +559,8 @@ function luuCP_(st) {
   if (!t) { clrSt_(); send_('Chuyến ' + esc_(st.id) + ' không còn (đã xóa?). Chi phí chưa được lưu.'); return; }
   const id = themChiPhi_(st.id, { loai: c.loai, tien: c.tien, hd: !!c.hd, so: c.so || '', nguoiTra: cfg.nguoiDeNghi, ghiChu: c.ghiChu || '' });
   let s = '✅ ' + esc_(c.loai + (c.ghiChu ? ' (' + c.ghiChu + ')' : '')) + ' <b>' + fmt_(c.tien) + 'đ</b> · ' +
-    (c.hd ? (c.so ? 'HĐ ' + esc_(c.so) : 'có HĐ') : 'không HĐ → phiếu Tiền mặt');
+    (c.hd ? (c.so ? 'HĐ ' + esc_(c.so) : 'có HĐ') : 'không HĐ → phiếu Tiền mặt') +
+    '\n→ chuyến ' + t.id + ' (' + nhanNgay_(t.tu, t.den) + ', ' + esc_(t.tinh) + ')';
   if (!c.hd) {
     const n = demKhongHD_(t.thang);
     s += '\n' + (n > cfg.maxKhongHD ? '⚠️ ' : '') + 'Tháng ' + t.thang + ' đã có ' + n + ' khoản không HĐ (quy định tối đa ' + cfg.maxKhongHD + ').';
@@ -513,7 +568,7 @@ function luuCP_(st) {
   if (c.tien < 10000 || c.tien > 20000000) s += '\n⚠️ Số tiền ' + (c.tien < 10000 ? 'nhỏ' : 'lớn') + ' bất thường — sai thì bấm Xóa.';
   const them = [[nut_('🗑 Xóa khoản này', 'xc|' + id)].concat(t.nguoi.length > 1 ? [nut_('👤 Người khác trả', 'nt|' + id)] : [])];
   delete st.c; st.b = 'menu'; setSt_(st);
-  send_(s + '\n\nThêm khoản khác, hoặc bấm ✔ Xong.', banPhimCP_(them));
+  send_(s + '\n\nThêm khoản khác cho chuyến ' + st.id + ', hoặc bấm ✔ Xong.', banPhimCP_(st.id, them));
 }
 
 function xongCP_(id) {
@@ -530,7 +585,7 @@ function xoaCP_(cid) {
   const b = docBang_(TAB.CHIPHI);
   const r = b.rows.find(x => String(x['ID']).trim() === cid);
   if (!r) return 'Không thấy khoản này.';
-  if (String(r['Trạng thái']).trim() === 'Xóa') return 'Khoản này đã xóa rồi.';
+  if (laXoa_(r['Trạng thái'])) return 'Khoản này đã xóa rồi.';
   capNhat_(b, r, 'Trạng thái', 'Xóa');
   send_('🗑 Đã xóa: ' + esc_(r['Loại']) + ' ' + fmt_(Number(r['Số tiền'])) + 'đ (chuyến ' + esc_(r['ID chuyến']) + ').');
   return 'Đã xóa';
@@ -767,10 +822,10 @@ function dienCK_(sh, L, cfg, thang, hn) {
   const A = cotChu_;
   const rows = L.ck.map((x, i) => {
     const r = bd + i, v = rong_(nc);
-    v[C.stt - 1] = i + 1; v[C.ten - 1] = x.ten; v[C.ngay - 1] = x.dau ? x.ngay : '';
+    v[C.stt - 1] = i + 1; v[C.ten - 1] = an_(x.ten); v[C.ngay - 1] = x.dau ? x.ngay : '';
     v[C.soNgay - 1] = x.soNgay; v[C.ctp - 1] = x.ctp; v[C.g - 1] = x.g || ''; v[C.h - 1] = x.h || '';
     v[C.tien - 1] = '=' + A(C.soNgay) + r + '*' + A(C.ctp) + r + '+N(' + A(C.g) + r + ')+N(' + A(C.h) + r + ')';
-    v[C.ghiChu - 1] = x.ghiChu;
+    v[C.ghiChu - 1] = an_(x.ghiChu);
     return v;
   });
   sh.getRange(bd, C.ngay, n, 1).setNumberFormat('@').setHorizontalAlignment('center');
@@ -797,11 +852,11 @@ function dienCK_(sh, L, cfg, thang, hn) {
     const vung = (c, a, b) => '$' + A(c) + '$' + a + ':$' + A(c) + '$' + b;
     const rows2 = L.nguoi.map((p, i) => {
       const r = bd2 + i, v = rong_(nc);
-      v[C2.stt - 1] = i + 1; v[C2.ten - 1] = p.ten;
+      v[C2.stt - 1] = i + 1; v[C2.ten - 1] = an_(p.ten);
       v[C2.tien - 1] = '=SUMIFS(' + vung(C.tien, bd, kt) + ',' + vung(C.ten, bd, kt) + ',' + A(C2.ten) + r + ')';
       v[C2.tu - 1] = p.tu || '';
       v[C2.con - 1] = '=' + A(C2.tien) + r + '-N(' + A(C2.tu) + r + ')';
-      v[C2.stk - 1] = p.stk; v[C2.nh - 1] = p.nh;
+      v[C2.stk - 1] = an_(p.stk); v[C2.nh - 1] = an_(p.nh);
       return v;
     });
     sh.getRange(bd2, C2.stk, n2, 1).setNumberFormat('@');
@@ -830,8 +885,8 @@ function dienPL_(sh, L) {
   const n = chinhSoDong_(sh, bd, cu, L.pl.length, nc);
   const rows = L.pl.map(x => {
     const v = rong_(nc);
-    v[C.ngay - 1] = x.ngay; v[C.nd - 1] = x.nd; v[C.truong - 1] = x.truong; v[C.diaBan - 1] = x.diaBan;
-    v[C.ten - 1] = x.ten; v[C.bp - 1] = x.bp; v[C.pt - 1] = x.pt;
+    v[C.ngay - 1] = x.ngay; v[C.nd - 1] = an_(x.nd); v[C.truong - 1] = an_(x.truong); v[C.diaBan - 1] = an_(x.diaBan);
+    v[C.ten - 1] = an_(x.ten); v[C.bp - 1] = an_(x.bp); v[C.pt - 1] = an_(x.pt);
     return v;
   });
   sh.getRange(bd, 1, n, nc).setNumberFormat('@');
@@ -857,9 +912,9 @@ function dienTM_(sh, L, cfg, thang) {
   const A = cotChu_;
   const rows = L.tm.map((x, i) => {
     const r = bd + i, v = rong_(nc);
-    v[C.stt - 1] = i + 1; v[C.ngay - 1] = x.ngay; v[C.nd - 1] = x.nd; v[C.diaBan - 1] = x.diaBan;
+    v[C.stt - 1] = i + 1; v[C.ngay - 1] = x.ngay; v[C.nd - 1] = an_(x.nd); v[C.diaBan - 1] = an_(x.diaBan);
     v[C.sl - 1] = 1; v[C.dg - 1] = x.tien; v[C.tien - 1] = '=N(' + A(C.sl) + r + ')*N(' + A(C.dg) + r + ')';
-    v[C.ghiChu - 1] = x.ghiChu;
+    v[C.ghiChu - 1] = an_(x.ghiChu);
     return v;
   });
   [C.ngay, C.nd, C.diaBan, C.ghiChu].forEach(c => sh.getRange(bd, c, n, 1).setNumberFormat('@'));
@@ -950,8 +1005,17 @@ function SS_() {
   return C_.ss;
 }
 
-function getSt_() { try { return JSON.parse(P_().getProperty('STATE') || 'null'); } catch (e) { return null; } }
-function setSt_(st) { P_().setProperty('STATE', JSON.stringify(st)); }
+// Trạng thái hội thoại lưu lâu dài (bị ngắt vẫn nhập tiếp được). Riêng bước thêm chi phí hết hạn sau 12 giờ
+// để hôm sau gõ chi phí không lặng lẽ rơi vào chuyến cũ; chuyến đang tạo dở giữ 7 ngày.
+function getSt_() {
+  let st = null;
+  try { st = JSON.parse(P_().getProperty('STATE') || 'null'); } catch (e) {}
+  if (!st) return null;
+  const tuoi = Date.now() - (st.ts || 0);
+  if (tuoi > (st.f === 'cp' || st.f === 'cho' ? 12 : 7 * 24) * 3600e3) { clrSt_(); return null; }
+  return st;
+}
+function setSt_(st) { st.ts = Date.now(); P_().setProperty('STATE', JSON.stringify(st)); }
 function clrSt_() { P_().deleteProperty('STATE'); }
 
 function docBang_(ten) {
@@ -1030,9 +1094,10 @@ function themNhanSu_(ds) {
 
 function chuyen_() {
   return docBang_(TAB.CHUYEN).rows.map(r => ({
-    _r: r._r, id: String(r['ID']).trim(), tu: tuO_(r['Từ ngày']), den: tuO_(r['Đến ngày']), thang: thangO_(r['Tháng TT']),
+    _r: r._r, id: String(r['ID']).trim(), tu: tuO_(r['Từ ngày']), den: tuO_(r['Đến ngày']),
+    thang: thangO_(r['Tháng TT']) || (tuO_(r['Từ ngày']) ? tuO_(r['Từ ngày']).slice(5, 7) + '/' + tuO_(r['Từ ngày']).slice(0, 4) : ''),
     tinh: String(r['Địa bàn'] || '').trim(), truong: String(r['Trường'] || '').trim(), nd: String(r['Nội dung'] || '').trim(),
-    pt: String(r['Phương tiện'] || '').trim(), nguoi: tachTen_(r['Người đi']), xoa: String(r['Trạng thái']).trim() === 'Xóa',
+    pt: String(r['Phương tiện'] || '').trim(), nguoi: tachTen_(r['Người đi']), xoa: laXoa_(r['Trạng thái']),
   }));
 }
 function docChuyen_(id) { const k = String(id).trim(); return chuyen_().find(t => t.id === k && !t.xoa && t.tu && t.den) || null; }
@@ -1045,11 +1110,13 @@ function themChuyen_(t) {
   const b = docBang_(TAB.CHUYEN);
   const pre = t.tu.slice(2, 4) + t.tu.slice(5, 7);
   let max = 0;
-  b.rows.forEach(r => { const id = String(r['ID']).trim(); if (id.length === 7 && id.indexOf(pre) === 0) max = Math.max(max, parseInt(id.slice(4), 10) || 0); });
+  const xet = id => { id = String(id).trim(); if (id.length === 7 && id.indexOf(pre) === 0) max = Math.max(max, parseInt(id.slice(4), 10) || 0); };
+  b.rows.forEach(r => xet(r['ID']));
+  docBang_(TAB.CHIPHI).rows.forEach(r => xet(r['ID chuyến'])); // kể cả chuyến đã bị xóa dòng trong Sheet
   const id = pre + ('00' + (max + 1)).slice(-3);
   themDong_(b, {
     'ID': id, 'Từ ngày': dmy_(t.tu), 'Đến ngày': dmy_(t.den), 'Số ngày': soNgay_(t.tu, t.den),
-    'Tháng TT': t.tu.slice(5, 7) + '/' + t.tu.slice(0, 4), 'Địa bàn': t.tinh || '', 'Trường': t.truong || '',
+    'Tháng TT': '', 'Địa bàn': t.tinh || '', 'Trường': t.truong || '',
     'Nội dung': t.nd || '', 'Phương tiện': t.pt || '', 'Người đi': t.nguoi.join(', '), 'Trạng thái': 'OK', 'Tạo lúc': luc_(),
   });
   return id;
@@ -1058,9 +1125,9 @@ function themChuyen_(t) {
 function chiPhi_() {
   return docBang_(TAB.CHIPHI).rows.map(r => ({
     id: String(r['ID']).trim(), idChuyen: String(r['ID chuyến']).trim(), loai: String(r['Loại'] || '').trim(),
-    tien: Number(String(r['Số tiền']).replace(/[.,\s]/g, '')) || 0, hd: /^(co|c|x|yes|1)/.test(boDau_(r['Hóa đơn'] || '').trim()),
+    tien: Number(String(r['Số tiền']).replace(/[.,\s]/g, '')) || 0, hd: /^(co|x|yes|y|1)(\s|$)/.test(boDau_(r['Hóa đơn'] || '').trim()),
     so: String(r['Số HĐ'] || '').trim(), nguoiTra: String(r['Người trả'] || '').trim().replace(/\s+/g, ' '),
-    ghiChu: String(r['Ghi chú'] || '').trim(), xoa: String(r['Trạng thái']).trim() === 'Xóa',
+    ghiChu: String(r['Ghi chú'] || '').trim(), xoa: laXoa_(r['Trạng thái']),
   }));
 }
 
@@ -1101,6 +1168,7 @@ function moTaCP_(c) {
 
 function boDau_(s) { return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase(); }
 function chuan_(v) { return boDau_(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim().replace(/:$/, '').trim(); }
+function laXoa_(v) { return /^xoa/.test(boDau_(v || '').trim()); }
 function tachTen_(v) { return String(v || '').split(',').map(s => s.trim().replace(/\s+/g, ' ')).filter(Boolean); }
 
 // "1tr8" "1.8tr" "1,8 triệu" "864k" "864.000" "864000đ" "1k5" → số đồng; không đọc được → null
@@ -1120,11 +1188,18 @@ function docTien_(s) {
 // Tin ở bước số tiền: "1tr8" | "1tr8 hđ 145" | "900k khd" | "900k không hóa đơn" → {tien, hd: true|false|null, so} hoặc {loi}
 function docDongTien_(s) {
   const low = String(s).normalize('NFC').toLowerCase().trim().replace(/\s+/g, ' ');
-  const m = low.match(/^(\d[\d.,]*)((?: ?(?:triệu|trieu|tr|nghìn|nghin|ngàn|ngan|k|vnđ|vnd|đồng|dong|đ|d)(?![a-zà-ỹđ])\d{0,3})?)\s*(.*)$/);
+  const CHU = '(?![a-zà-ỹđ])';
+  const DV = '(?: ?(?:triệu|trieu|tr)' + CHU + '(?: ?\\d{1,3}(?![\\d.,]))?| ?(?:nghìn|nghin|ngàn|ngan|k)' + CHU + '(?:\\d{1,3}(?![\\d.,]))?)?' +
+    '(?: ?(?:vnđ|vnd|đồng|dong|đ|d)' + CHU + ')?';
+  const m = low.match(new RegExp('^(\\d[\\d.,]*)(' + DV + ')\\s*(.*)$'));
   if (!m || docTien_(m[1] + m[2]) === null) return { loi: 'Chưa đọc được số tiền. Gõ kiểu <code>1tr8</code>, <code>864k</code> hoặc <code>864000</code>.' };
-  // "550100 k có HĐ": chữ "k" có thể là "nghìn" hoặc "không" → thử cả 2 cách, lấy cách hợp lý.
+  // "550100 k có HĐ": chữ "k" đứng riêng có thể là "nghìn" hoặc "không" → thử cả 2 cách.
+  // Số đã có từ 4 chữ số trở lên (550100 k…) thì gần như chắc "k" là "không".
   const cach = [[m[1] + m[2], m[3]]];
-  if (/^ /.test(m[2])) cach.push([m[1], (m[2].trim() + ' ' + m[3]).trim()]);
+  if (/^ k$/.test(m[2])) {
+    const c2 = [m[1], ('k ' + m[3]).trim()];
+    if (m[1].replace(/[.,]/g, '').length >= 4) cach.unshift(c2); else cach.push(c2);
+  }
   let loi = null;
   for (let i = 0; i < cach.length; i++) {
     const tien = docTien_(cach[i][0]);
@@ -1183,7 +1258,10 @@ function docNgay_(s, hn, ref) {
     y = +ref.slice(0, 4);
     if (iso_(y, mo, d) < ref && hopLe_(y + 1, mo, d) && soNgay_(ref, iso_(y + 1, mo, d)) <= 31) y += 1;
   }
-  else { y = +hn.slice(0, 4); if (iso_(y, mo, d) > congNgay_(hn, 31)) y -= 1; }
+  else { // chọn năm để ngày nằm trong khoảng [11 tháng trước, 31 ngày tới]
+    const y0 = +hn.slice(0, 4), lo = congNgay_(hn, -330), hi = congNgay_(hn, 31);
+    y = [y0, y0 - 1, y0 + 1].find(k => hopLe_(k, mo, d) && iso_(k, mo, d) >= lo && iso_(k, mo, d) <= hi) || y0;
+  }
   if (y < 2020 || y > 2100 || !hopLe_(y, mo, d)) return null;
   return iso_(y, mo, d);
 }

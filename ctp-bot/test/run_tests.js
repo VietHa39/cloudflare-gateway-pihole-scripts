@@ -206,7 +206,7 @@ check('update_id nhỏ hơn vẫn xử lý', G.tg.filter(x => x.method === 'send
 /* ============ 3. Tạo chuyến /moi (bấm nút) ============ */
 G.setNow('2026-09-24T19:30');
 r = say('/moi');
-check('/moi hỏi ngày đi', /Ngày đi/.test(r) && kb().join() === 'nd|0,nd|1', r);
+check('/moi hỏi ngày đi (nút mang ngày thật)', /Ngày đi/.test(r) && kb().join() === 'nd|2026-09-24,nd|2026-09-23', kb());
 r = tap('nd|0');
 check('bấm Hôm nay → hỏi ngày về', /Ngày về/.test(r) && kb()[0] === 've|0', r);
 check('bấm nút → gỡ bàn phím cũ', G.tg.some(x => x.method === 'editMessageReplyMarkup'));
@@ -229,10 +229,10 @@ check('nút nội dung mặc định', kb().join() === 'nc|0', kb());
 r = tap('nc|0');
 check('lưu chuyến 2609001', /Đã lưu chuyến <b>2609001<\/b>/.test(r) && /tháng 09\/2026/.test(r), r);
 check('CTP 1 ngày × 2 người', /1 ngày × 2 người × 200.000 = <b>400.000đ<\/b>/.test(r), r);
-check('ngay sau đó là menu chi phí', kb().indexOf('cl|KS') >= 0 && kb().indexOf('cl|OK') >= 0);
+check('ngay sau đó là menu chi phí (nút mang mã chuyến)', kb().indexOf('cl|KS|2609001') >= 0 && kb().indexOf('cl|OK|2609001') >= 0, kb());
 let T = tab('Chuyen');
 eq('dòng Chuyen', [T[0]['ID'], T[0]['Từ ngày'], T[0]['Đến ngày'], T[0]['Số ngày'], T[0]['Tháng TT'], T[0]['Địa bàn'], T[0]['Trường'], T[0]['Phương tiện'], T[0]['Người đi'], T[0]['Nội dung'], T[0]['Trạng thái']],
-  ['2609001', '24/09/2026', '24/09/2026', 1, '09/2026', 'Hưng Yên', 'THCS Đường Hào, TH Phụng Công, TH Lạc Hồng', 'Taxi/ Xe khách', 'Nguyễn Văn An, Trần Thị Bình', 'Triển khai eNetViet', 'OK']);
+  ['2609001', '24/09/2026', '24/09/2026', 1, '', 'Hưng Yên', 'THCS Đường Hào, TH Phụng Công, TH Lạc Hồng', 'Taxi/ Xe khách', 'Nguyễn Văn An, Trần Thị Bình', 'Triển khai eNetViet', 'OK']);
 check('ngày lưu dạng chữ (không bị đổi thành Date)', typeof T[0]['Từ ngày'] === 'string');
 
 /* ============ 4. Chi phí ============ */
@@ -274,7 +274,9 @@ r = tap('np|2609001-1|1');
 check('đổi người trả', /Trần Thị Bình trả/.test(r) && tab('ChiPhi')[0]['Người trả'] === 'Trần Thị Bình', r);
 r = tap('cl|OK');
 check('Xong chuyến', /Xong chuyến <b>2609001<\/b>: CTP 400.000đ \+ chi phí 3.670.100đ \(4 khoản\)/.test(r) && !getSt_(), r);
-check('nút cũ sau Xong', (tap('cl|KS'), /đã xong/.test(toast())), toast());
+r = tap('cl|KS|2609001');
+check('bấm nút cũ của chuyến đã Xong → mở lại đúng chuyến đó', /Số tiền <b>Khách sạn<\/b> \(chuyến 2609001\)/.test(r) && getSt_().id === '2609001', r);
+say('/huy');
 check('nút ngày cũ', (tap('nd|0'), toast() === 'Nút này đã cũ.'));
 
 /* ============ 5. Gõ khoảng ngày, gõ tên, người mới, gián đoạn ============ */
@@ -357,6 +359,101 @@ say('/cp 2609001'); tap('cl|XX');
 G.tg.length = 0; post({ update_id: ++updId, message: { message_id: 10, from: { id: OWNER }, chat: { id: OWNER, type: 'private' }, photo: [{}], caption: '300k hđ 77' } });
 check('ảnh có chú thích → đọc chú thích', /Xăng xe <b>300.000đ<\/b> · HĐ 77/.test(out()), out());
 tap('cl|OK');
+
+
+/* ============ 7b. Các lỗi reviewer tìm ra (phải không tái diễn) ============ */
+// (1) nút loại chi phí của chuyến cũ → chi phí vào đúng chuyến cũ
+say('/cp 2609002');                         // đang mở chuyến 2609002
+r = tap('cl|TK|2609001');                    // bấm nút ở tin nhắn cũ của chuyến 2609001
+check('nút cũ của chuyến khác → đúng chuyến đó', /chuyến 2609001/.test(r) && getSt_().id === '2609001', r);
+r = say('500k hđ 9');
+check('xác nhận ghi rõ chuyến', /→ chuyến 2609001 \(24\/09, Hưng Yên\)/.test(r), r);
+tap('cl|OK|2609001');
+// (2) quá 12 giờ sau vẫn gõ chi phí → không tự rơi vào chuyến cũ, phải bấm xác nhận
+say('/cp 2609002');
+G.setNow('2026-09-26T12:00');
+r = say('ks 700k hđ 3');
+check('trạng thái chi phí hết hạn sau 12h → hỏi xác nhận chuyến', /Thêm "<b>ks 700k hđ 3<\/b>" vào chuyến <b>2609002<\/b>/.test(r) && kb()[0] === 'qc|2609002', r);
+const truoc = tab('ChiPhi').length;
+r = tap('qc|2609002');
+check('bấm xác nhận → lưu vào chuyến đó', tab('ChiPhi').length === truoc + 1 && /Khách sạn <b>700.000đ<\/b> · HĐ 3/.test(r), r);
+tap('cl|OK|2609002');
+say('ks 1tr hđ 1'); r = tap('xn|');
+check('không đồng ý → không lưu', tab('ChiPhi').length === truoc + 1 && !getSt_());
+// (3) nút "Hôm qua 23/09" bấm vào hôm sau vẫn là 23/09
+G.setNow('2026-09-24T23:50'); say('/moi');
+G.setNow('2026-09-25T07:30'); r = tap('nd|2026-09-23');
+check('nút ngày giữ đúng ngày trên nhãn', getSt_().t.tu === '2026-09-23', getSt_());
+r = tap('ve|2026-09-24');
+check('nút "về hôm nay" giữ đúng ngày trên nhãn', /23\/09 - 24\/09 \(2 ngày\)/.test(r), r);
+say('/huy');
+check('/huy sau khi đã nhập người → không báo bỏ dở thừa', true);
+// (4) gõ "2/1-4/1" vào 29/12 là năm sau
+eq('docKhoang_ 2/1-4/1 gõ ngày 29/12', docKhoang_('2/1-4/1', '2026-12-29'), { tu: '2027-01-02', den: '2027-01-04' });
+eq('docNgay_ 1/11 gõ ngày 24/9 (nhập muộn gần 11 tháng)', docNgay_('1/11', '2026-09-24'), '2025-11-01');
+// (5) sửa ngày trong Sheet sang tháng khác → chuyến chuyển tháng (Tháng TT để trống)
+{
+  const sh = G.active().getSheetByName('Chuyen');
+  const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  sh.getRange(3, h.indexOf('Từ ngày') + 1).setValue('01/10/2026'); sh.getRange(3, h.indexOf('Đến ngày') + 1).setValue('02/10/2026');
+  xoaCache_();
+  check('sửa ngày sang tháng 10 → /bang 10/2026 có chuyến', /2609002/.test(say('/bang 10/2026')));
+  sh.getRange(3, h.indexOf('Tháng TT') + 1).setValue('09/2026'); xoaCache_();
+  check('điền Tháng TT = 09/2026 → tính vào tháng 9', /2609002/.test(say('/bang 9')) && !/2609002/.test(say('/bang 10/2026')));
+  sh.getRange(3, h.indexOf('Từ ngày') + 1).setValue('10/09/2026'); sh.getRange(3, h.indexOf('Đến ngày') + 1).setValue('12/09/2026');
+  sh.getRange(3, h.indexOf('Tháng TT') + 1).setValue(''); xoaCache_();
+}
+// (6) xóa dòng chuyến trong Sheet → mã mới không dùng lại mã còn chi phí
+{
+  G.setNow('2026-09-27T10:00');
+  say('/moi'); say('27/9'); tap('ve|0'); tap('ng|solo'); say('Hà Nội'); say('TH Z'); tap('pt|0'); r = say('Thử');
+  const id = (r.match(/chuyến <b>(\d+)<\/b>/) || [])[1];
+  say('ks 1tr hđ 99'); tap('cl|OK|' + id);
+  const sh = G.active().getSheetByName('Chuyen');
+  sh.deleteRows(sh.getLastRow(), 1); xoaCache_();          // người dùng xóa tay dòng cuối
+  say('/moi'); say('27/9'); tap('ve|0'); tap('ng|solo'); say('Hà Nội'); say('TH Z'); tap('pt|0'); r = say('Thử lại');
+  const id2 = (r.match(/chuyến <b>(\d+)<\/b>/) || [])[1];
+  check('không dùng lại mã chuyến đã có chi phí', id2 && id2 !== id, [id, id2]);
+  check('chuyến mới không nhận chi phí cũ', !/1.000.000 · HĐ 99/.test(say('/xem ' + id2)));
+  tap('cl|OK|' + id2); say('/xoa ' + id2); tap('xy|' + id2);
+}
+// (7) trạng thái gõ tay "Xoá"/"xóa"
+eq('laXoa_ Xoá', laXoa_('Xoá'), true); eq('laXoa_ xóa', laXoa_(' xóa '), true); eq('laXoa_ OK', laXoa_('OK'), false);
+// (8) cột Hóa đơn gõ tay "Chưa có" → không HĐ
+{
+  const sh = G.active().getSheetByName('ChiPhi');
+  const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const cu = sh.getRange(2, h.indexOf('Hóa đơn') + 1).getValue();
+  sh.getRange(2, h.indexOf('Hóa đơn') + 1).setValue('Chưa có'); xoaCache_();
+  eq('"Chưa có" → không HĐ', chiPhi_()[0].hd, false);
+  sh.getRange(2, h.indexOf('Hóa đơn') + 1).setValue('x'); xoaCache_();
+  eq('"x" → có HĐ', chiPhi_()[0].hd, true);
+  sh.getRange(2, h.indexOf('Hóa đơn') + 1).setValue(cu); xoaCache_();
+}
+// (9) "150000 k có hđ" = 150.000đ không HĐ
+eq('150000 k có hđ', docDongTien_('150000 k có hđ'), { tien: 150000, hd: false });
+eq('864 k', docDongTien_('864 k'), { tien: 864000, hd: null });
+eq('800 nghìn đồng', docDongTien_('800 nghìn đồng'), { tien: 800000, hd: null });
+eq('1 triệu 2', docDongTien_('1 triệu 2'), { tien: 1200000, hd: null });
+// đang hỏi số HĐ mà gõ luôn khoản khác → lưu khoản trước, xử lý khoản sau
+say('/cp 2609002'); say('khác gửi xe 15000 hđ'); // hỏi số HĐ
+r = say('tk 180000 k có hđ');
+check('khoản mới gõ ở bước số HĐ không bị nuốt làm số HĐ', /Khác \(gửi xe\) <b>15.000đ<\/b> · có HĐ/.test(r) && /Tiếp khách <b>180.000đ<\/b> · không HĐ/.test(r), r);
+r = say('/cp 2609002'); say('xăng 300k hđ'); r = say('số hóa đơn là cái này dài quá không phải số');
+check('số HĐ dài bất thường → hỏi lại', /Số hóa đơn thường ngắn/.test(r), r);
+say('0012'); tap('cl|OK|2609002');
+// dọn các khoản thử để phần sau giữ nguyên số liệu
+['2609002-3', '2609002-4', '2609002-5', '2609002-6', '2609001-6'].forEach(c => tap('xc|' + c));
+// PIN: sai quá 10 lần thì hủy
+{
+  const P0 = Object.assign({}, G.props.m);
+  delete G.props.m.OWNER_ID; G.props.setProperty('PIN', '123456');
+  for (let i = 0; i < 10; i++) say('/start 00000' + (i % 10), 333);
+  check('sai PIN 10 lần → hủy PIN', !G.props.getProperty('PIN'));
+  say('/start 123456', 333);
+  check('sau khi hủy, PIN đúng cũng không nhận', !G.props.getProperty('OWNER_ID'));
+  G.props.m = P0;
+}
 
 /* ============ 8. Lỗi được báo cho người dùng ============ */
 setCfg('Người đề nghị', '');
