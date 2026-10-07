@@ -44,6 +44,15 @@ const Utilities = {
     const p = partsVN(date, tz);
     return fmt.replace(/yyyy|MM|dd|HH|mm|ss/g, t => ({ yyyy: p.year, MM: p.month, dd: p.day, HH: p.hour, mm: p.minute, ss: p.second })[t]);
   },
+  newBlob(data, type, name) {
+    return { data: String(data), type, name, getName() { return this.name; }, setName(n) { this.name = n; return this; },
+      getContentType() { return this.type; }, setContentType(t) { this.type = t; return this; }, getDataAsString() { return this.data; } };
+  },
+  zip(blobs, name) { // giữ nguyên danh sách tệp để test tự đóng gói/đọc lại
+    return { files: blobs.map(b => ({ name: b.name, data: b.data })), name, type: 'application/zip',
+      getName() { return this.name; }, setName(n) { this.name = n; return this; },
+      getContentType() { return this.type; }, setContentType(t) { this.type = t; return this; } };
+  },
   getUuid() { uuidN++; return ('00000000-0000-4000-8000-' + String(uuidN).padStart(12, '0')).replace(/0/g, () => 'abcdef0123456789'[Math.floor(Math.random() * 16)]); },
 };
 

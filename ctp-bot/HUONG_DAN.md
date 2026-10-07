@@ -72,6 +72,10 @@ Nếu sau này kế toán đổi mẫu, bạn chỉ cần làm lại bước 2 r
    | ID file mẫu | Dán link Google Sheet mẫu ở bước 2 |
    | CTP mỗi ngày | `200000` (đã điền sẵn) |
    | Nội dung mặc định | Ví dụ `Triển khai eNetViet` |
+   | Tên công ty | In hoa, dấu `\|` để xuống dòng. Ví dụ `CÔNG TY CỔ PHẦN TẬP ĐOÀN\|CÔNG NGHỆ ABC` |
+   | Trưởng bộ phận | Họ tên trưởng bộ phận (ký ở Kế hoạch công tác) |
+   | Người phê duyệt | Họ tên người phê duyệt |
+   | Mã mẫu kế hoạch | Ví dụ `CTP 01` (ghi ở chân trang). Để trống nếu không cần |
    | Các mục khác | Để nguyên |
 
    **Tab NhanSu**: mỗi người 1 dòng. **Dòng đầu tiên là bạn**, họ tên viết giống hệt ô "Người đề nghị".
@@ -82,6 +86,7 @@ Nếu sau này kế toán đổi mẫu, bạn chỉ cần làm lại bước 2 r
    | Trần Thị Bình | Bình | Kinh doanh | … | AB Bank |
 
    *Tên gọi* là tên hiện trên nút bấm. Để trống thì bot tự lấy chữ cuối của họ tên.
+   Cột **Chức vụ** (cuối bảng) in vào Kế hoạch công tác. Để trống thì bot lấy *Bộ phận*.
 
 ## Bước 6: Mở bot cho Telegram gọi vào (5 phút)
 
@@ -120,7 +125,7 @@ Nếu sau này kế toán đổi mẫu, bạn chỉ cần làm lại bước 2 r
 | Xem tháng này | `/bang`; tháng khác: `/bang 8` |
 | Xem hoặc xóa 1 chuyến, 1 khoản chi | `/xem 2609001` rồi bấm nút 🗑 |
 | Ghi tạm ứng | `/tamung 2tr` (tháng này) hoặc `/tamung 2tr 9` |
-| Xuất file cuối tháng | `/xuat`. Nếu hôm nay là ngày 1–10, bot tự lấy **tháng trước**. Muốn chọn tháng: `/xuat 9` |
+| Xuất bộ hồ sơ cuối tháng | `/xuat`. Bot gửi **Kế hoạch đi công tác (Word)**, **bảng kê (PDF)** và bảng kê dạng Excel. Nếu hôm nay là ngày 1–10, bot tự lấy **tháng trước**. Muốn chọn tháng: `/xuat 9` |
 | Đang nhập dở muốn bỏ | `/huy` |
 
 **Ngày**: bấm *Hôm nay* hoặc *Hôm qua*. Cũng có thể gõ `10/9`, hoặc gõ luôn cả khoảng `10/9-12/9`.
@@ -153,8 +158,11 @@ Chữ **k** đứng riêng sau một số lớn được hiểu là "không". V�
 ### Cuối tháng
 
 1. Gõ `/bang` và đọc các dòng ⚠️, ví dụ chuyến chưa có tên trường, thiếu số tài khoản, quá 2 khoản không hóa đơn.
-2. Gõ `/xuat`, bot gửi PDF và Excel. Hai file cũng được lưu trong Drive, thư mục **CTP - File xuất**.
-3. In PDF, ký tên. Nộp kèm **hóa đơn** và **giấy đi đường**.
+2. Gõ `/xuat`, bot gửi 3 file. Cả 3 file cũng được lưu trong Drive, thư mục **CTP - File xuất**:
+   - **Kế hoạch đi công tác** (Word): tổng hợp từ các chuyến trong tháng gồm địa điểm, người đi, thời gian, nội dung, phương tiện. Trình bày theo **Nghị định 30/2020/NĐ-CP**: Times New Roman, lề trái 30 mm, quốc hiệu và tiêu ngữ có gạch dưới, ngày ghi kiểu `03/8/2026`. Ngày ký là ngày bạn xuất file. File Word nên sửa được trước khi in.
+   - **Bảng kê** (PDF): Giấy đề nghị thanh toán, Phụ lục 1, và Tiền mặt nếu có.
+   - Bảng kê dạng **Excel**, nếu kế toán cần.
+3. In Kế hoạch và bảng kê rồi ký tên. Nộp kèm **hóa đơn** và **giấy đi đường**.
 
 ### Bot KHÔNG làm thay được
 
@@ -174,6 +182,8 @@ Khi có bản `Code.gs` mới:
 3. Ở **Phiên bản**, chọn **Phiên bản mới** (New version), rồi bấm **Triển khai**.
 
 > Làm như vậy link web app **giữ nguyên**, không cần làm gì thêm. Nếu lỡ bấm *Tùy chọn triển khai mới*, bạn sẽ có link mới. Khi đó cập nhật `WEBAPP_URL` rồi chạy lại `datWebhook`.
+
+Sau khi dán code mới, chạy lại hàm **`caiDat`** một lần. Hàm này chỉ thêm các mục và cột mới (ví dụ các mục cho Kế hoạch công tác), không xóa dữ liệu cũ.
 
 Nếu code mới cần thêm quyền, Google sẽ hỏi lại khi bạn chạy một hàm bất kỳ, ví dụ `kiemTraWebhook`. Bấm cho phép như ở bước 5.
 

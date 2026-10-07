@@ -490,8 +490,41 @@ r = say('/xuat');
 check('/xuat mặc định (ngày 3/2) = tháng 01/2026', /Đang tạo file tháng 01\/2026/.test(r), r);
 check('không có lỗi khi xuất', !/⚠️ (?!Lưu ý)/.test(r.replace(/⚠️ Lưu ý[\s\S]*/, '')), r);
 const docs = G.tg.filter(x => x.method === 'sendDocument');
-check('gửi 2 file (PDF + Excel)', docs.length === 2 && /\.pdf$/.test(docs[0].payload.document.name) && /\.xlsx$/.test(docs[1].payload.document.name), docs.map(d => d.payload.document && d.payload.document.name));
-check('caption có tổng', docs[0] && /Chuyển khoản: 8.368.100đ/.test(docs[0].payload.caption) && /Tiền mặt: 1.000.000đ \(1 khoản\)/.test(docs[0].payload.caption), docs[0] && docs[0].payload.caption);
+check('gửi 3 file (Kế hoạch Word + bảng kê PDF + Excel)', docs.length === 3 && /\.docx$/.test(docs[0].payload.document.name) && /\.pdf$/.test(docs[1].payload.document.name) && /\.xlsx$/.test(docs[2].payload.document.name), docs.map(d => d.payload.document && d.payload.document.name));
+check('caption có tổng', docs[1] && /Chuyển khoản: 8.368.100đ/.test(docs[1].payload.caption) && /Tiền mặt: 1.000.000đ \(1 khoản\)/.test(docs[1].payload.caption), docs[1] && docs[1].payload.caption);
+// Kế hoạch đi công tác (.docx tự tạo, trình bày theo NĐ 30)
+const khZip = docs[0].payload.document;
+check('docx đúng loại MIME', khZip.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', khZip.type);
+eq('docx có đủ phần', khZip.files.map(f => f.name).sort(), ['[Content_Types].xml', '_rels/.rels', 'word/_rels/document.xml.rels', 'word/document.xml', 'word/styles.xml']);
+const khXml = khZip.files.find(f => f.name === 'word/document.xml').data;
+const khChu = khXml.replace(/<w:p[ >]/g, '\n$&').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&');
+[['quốc hiệu', 'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM'], ['tiêu ngữ', 'Độc lập - Tự do - Hạnh phúc'], ['tên loại', 'KẾ HOẠCH'],
+ ['trích yếu', 'Đi công tác tháng 1 năm 2026'], ['ngày ký theo NĐ 30 (tháng 2 → 02)', 'Hà Nội, ngày 03 tháng 02 năm 2026'],
+ ['kính gửi', 'Kính gửi: Ban lãnh đạo Công ty'], ['tên', 'Tên tôi là: Nguyễn Văn An'], ['bộ phận', 'Bộ phận: Kinh doanh'],
+ ['địa điểm (không trùng, theo thứ tự)', 'Địa điểm công tác: Phú Thọ, Bắc Ninh'], ['số người', 'Số người tham gia đi công tác: 04 người, gồm:'],
+ ['thời gian (ngày < 10 và tháng 1 có số 0)', 'Thời gian công tác: Từ ngày 05/01/2026 đến ngày 28/01/2026'],
+ ['nội dung', 'Nội dung công tác: Triển khai eNetViet tại Phú Thọ, Bắc Ninh'], ['phương tiện', 'Phương tiện đi công tác: Xe công ty'],
+ ['kết thúc ./.', 'phê duyệt kế hoạch công tác./.'], ['chữ ký', 'NGƯỜI ĐỀ NGHỊ'], ['chữ ký 2', 'TRƯỞNG BỘ PHẬN'], ['chữ ký 3', 'NGƯỜI PHÊ DUYỆT'],
+].forEach(([ten, chu]) => check('Kế hoạch: ' + ten, khChu.indexOf(chu) >= 0, chu));
+eq('Kế hoạch: bảng người (thứ tự xuất hiện, chủ đứng đầu)', (khChu.match(/\n(\d)\n([^\n]+)\n([^\n]+)/g) || []).map(x => x.trim().split('\n')),
+  [['1', A, 'Kinh doanh'], ['2', D, 'Kỹ thuật'], ['3', Cg, 'Kinh doanh'], ['4', B, 'Kinh doanh']]);
+check('Kế hoạch: lề A4 theo NĐ 30 (trên/dưới 20, trái 30, phải 15 mm)', /<w:pgSz w:w="11906" w:h="16838"\/><w:pgMar w:top="1134" w:right="851" w:bottom="1134" w:left="1701"/.test(khXml));
+check('Kế hoạch: phông Times New Roman', /Times New Roman/.test(khZip.files.find(f => f.name === 'word/styles.xml').data));
+check('Kế hoạch: cảnh báo thiếu tên công ty / người ký', /Tên công ty/.test(out()) && /Trưởng bộ phận/.test(out()), out());
+check('LichSuXuat có link Kế hoạch', /drive\.google\.com/.test(tab('LichSuXuat')[0]['Kế hoạch']));
+if (process.env.KH_OUT) fs.writeFileSync(process.env.KH_OUT, JSON.stringify(khZip.files));
+{ // chân trang "Mẫu: …" chỉ có khi điền Mã mẫu kế hoạch
+  const kh0 = lapKeHoach_(duLieuThang_('01/2026'));
+  const z1 = taoKeHoachDocx_(kh0, Object.assign({}, cauHinh_(), { maMau: 'CTP 01' }), '2026-02-03', 'a.docx');
+  const f1 = n => (z1.files.find(f => f.name === n) || {}).data || '';
+  check('chân trang có mã mẫu', /Mẫu: CTP 01/.test(f1('word/footer1.xml')) && /footerReference/.test(f1('word/document.xml')) && /footer1\.xml/.test(f1('[Content_Types].xml')) && /footer1\.xml/.test(f1('word/_rels/document.xml.rels')));
+  check('không điền mã mẫu → không có chân trang', !khZip.files.some(f => f.name === 'word/footer1.xml') && !/footerReference/.test(khXml));
+  eq('ngayVB_ theo NĐ 30', [ngayVB_('2026-08-03'), ngayVB_('2026-02-15'), ngayVB_('2026-12-25')], ['03/8/2026', '15/02/2026', '25/12/2026']);
+  eq('ngayKy_ theo NĐ 30', ngayKy_('Hà Nội', '2026-07-29'), 'Hà Nội, ngày 29 tháng 7 năm 2026');
+  const kh1 = lapKeHoach_(Object.assign(duLieuThang_('01/2026'), { trips: duLieuThang_('01/2026').trips.slice(0, 1) }));
+  eq('1 chuyến 1 ngày → "Ngày …"', kh1.thoiGian, 'Ngày 05/01/2026');
+  check('ký tự đặc biệt được thoát trong XML', /A &amp; B &lt;x&gt;/.test(taoKeHoachDocx_(Object.assign({}, kh0, { diaDiem: 'A & B <x>' }), cauHinh_(), '2026-02-03', 'b.docx').files.find(f => f.name === 'word/document.xml').data));
+}
 check('export PDF A4 dọc vừa khổ ngang', G.exports_.some(x => /format=pdf/.test(x.q) && /size=A4/.test(x.q) && /portrait=true/.test(x.q) && /fitw=true/.test(x.q) && x.auth === 'Bearer oauth-test'));
 check('export xlsx', G.exports_.some(x => x.q === 'format=xlsx'));
 check('LichSuXuat', tab('LichSuXuat').length === 1 && tab('LichSuXuat')[0]['Chuyển khoản'] === 8368100);

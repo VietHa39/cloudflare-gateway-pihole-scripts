@@ -19,10 +19,10 @@ const TAB = { CHUYEN: 'Chuyen', CHIPHI: 'ChiPhi', NHANSU: 'NhanSu', TAMUNG: 'Tam
 const COT = {
   Chuyen:     ['ID', 'Từ ngày', 'Đến ngày', 'Số ngày', 'Tháng TT', 'Địa bàn', 'Trường', 'Nội dung', 'Phương tiện', 'Người đi', 'Trạng thái', 'Tạo lúc'],
   ChiPhi:     ['ID', 'ID chuyến', 'Loại', 'Số tiền', 'Hóa đơn', 'Số HĐ', 'Người trả', 'Ghi chú', 'Trạng thái', 'Tạo lúc'],
-  NhanSu:     ['Họ tên', 'Tên gọi', 'Bộ phận', 'Số tài khoản', 'Ngân hàng'],
+  NhanSu:     ['Họ tên', 'Tên gọi', 'Bộ phận', 'Số tài khoản', 'Ngân hàng', 'Chức vụ'],
   TamUng:     ['Tháng TT', 'Họ tên', 'Số tiền', 'Ghi chú'],
   CauHinh:    ['Mục', 'Giá trị', 'Giải thích'],
-  LichSuXuat: ['Thời điểm', 'Tháng', 'Chuyển khoản', 'Tiền mặt', 'File PDF', 'File Excel'],
+  LichSuXuat: ['Thời điểm', 'Tháng', 'Chuyển khoản', 'Tiền mặt', 'File PDF', 'File Excel', 'Kế hoạch'],
   Loi:        ['Thời điểm', 'Lỗi'],
 };
 // Cột số; mọi cột khác lưu dạng chữ để Sheet không tự đổi "06/07/2026" thành ngày kiểu Mỹ
@@ -39,6 +39,11 @@ const CAUHINH_MAC_DINH = [
   ['ID file mẫu', '', 'Dán đường link Google Sheet mẫu của kế toán (hoặc chỉ phần ID)'],
   ['Tối đa khoản không HĐ/tháng', 2, 'Quy định công ty; vượt thì bot cảnh báo'],
   ['Phụ lục mỗi người 1 dòng', 'Không', 'Có = mỗi người trong đoàn 1 dòng; Không = cả đoàn 1 dòng'],
+  ['Tên công ty', '', 'Đầu Kế hoạch công tác. Dấu | để xuống dòng, vd: CÔNG TY CỔ PHẦN TẬP ĐOÀN|CÔNG NGHỆ ABC'],
+  ['Kính gửi (kế hoạch)', 'Ban lãnh đạo Công ty', ''],
+  ['Trưởng bộ phận', '', 'Họ tên, in ở chữ ký Kế hoạch công tác'],
+  ['Người phê duyệt', '', 'Họ tên, in ở chữ ký Kế hoạch công tác'],
+  ['Mã mẫu kế hoạch', '', 'Ghi ở chân trang Kế hoạch, vd: CTP 01 (để trống = không ghi)'],
 ];
 
 const LOAI = { KS: 'Khách sạn', XX: 'Xăng xe', TK: 'Tiếp khách', KH: 'Khác' };
@@ -692,10 +697,11 @@ function lenhXuat_(ts) {
   const cap = 'Công tác phí tháng ' + thang + '\nChuyển khoản: ' + fmt_(L.tongCK) + 'đ' +
     (L.tamUng ? ' (tạm ứng ' + fmt_(L.tamUng) + ', còn ' + fmt_(L.conTT) + ')' : '') +
     (L.tm.length ? '\nTiền mặt: ' + fmt_(L.tongTM) + 'đ (' + L.tm.length + ' khoản)' : '');
-  guiFile_(kq.pdfBlob, cap + '\n→ PDF để in', kq.pdf);
-  guiFile_(kq.xlsxBlob, 'Excel (nếu kế toán cần file)', kq.xlsx);
+  if (kq.khBlob) guiFile_(kq.khBlob, 'Kế hoạch đi công tác tháng ' + thang + ' (Word, trình bày theo NĐ 30/2020)', kq.kh);
+  guiFile_(kq.pdfBlob, cap + '\n→ Bảng kê, PDF để in', kq.pdf);
+  guiFile_(kq.xlsxBlob, 'Bảng kê dạng Excel (nếu kế toán cần file)', kq.xlsx);
   send_((L.canhBao.length ? '⚠️ Lưu ý:\n• ' + esc_(L.canhBao.join('\n• ')) + '\n\n' : '') +
-    '📁 Đã lưu trong Google Drive, thư mục "' + THU_MUC + '".\nNộp: in PDF, ký, kèm hóa đơn và giấy đi đường.');
+    '📁 Đã lưu trong Google Drive, thư mục "' + THU_MUC + '".\nNộp: in Kế hoạch + bảng kê, ký, kèm hóa đơn và giấy đi đường.');
 }
 
 function duLieuThang_(thang) {
@@ -798,8 +804,16 @@ function xuatThang_(thang) {
   const pdfBlob = taiFile_(ss.getId(), 'pdf').setName(ten + '.pdf');
   const xlsxBlob = taiFile_(ss.getId(), 'xlsx').setName(ten + '.xlsx');
   const pdf = thuMuc.createFile(pdfBlob), xlsx = thuMuc.createFile(xlsxBlob);
-  themDong_(docBang_(TAB.LICHSU), { 'Thời điểm': luc_(), 'Tháng': thang, 'Chuyển khoản': L.tongCK, 'Tiền mặt': L.tongTM, 'File PDF': pdf.getUrl(), 'File Excel': xlsx.getUrl() });
-  return { L, pdf, xlsx, pdfBlob, xlsxBlob, sheetUrl: file.getUrl() };
+  // Kế hoạch đi công tác (Word). Lỗi ở đây không chặn bảng kê.
+  let khBlob = null, kh = null;
+  try {
+    if (!d.cfg.tenCongTy) L.canhBao.push('Chưa điền "Tên công ty" trong CauHinh — đầu Kế hoạch công tác đang để trống.');
+    if (!d.cfg.truongBoPhan || !d.cfg.nguoiDuyet) L.canhBao.push('Chưa điền "Trưởng bộ phận" / "Người phê duyệt" trong CauHinh — chữ ký Kế hoạch còn trống tên.');
+    khBlob = taoKeHoachDocx_(lapKeHoach_(d), d.cfg, hn, 'Ke hoach cong tac ' + thang.replace('/', '-') + ' - ' + d.cfg.nguoiDeNghi + '.docx');
+    kh = thuMuc.createFile(khBlob);
+  } catch (e) { ghiLoi_(e); L.canhBao.push('Chưa tạo được Kế hoạch công tác: ' + e.message); }
+  themDong_(docBang_(TAB.LICHSU), { 'Thời điểm': luc_(), 'Tháng': thang, 'Chuyển khoản': L.tongCK, 'Tiền mặt': L.tongTM, 'File PDF': pdf.getUrl(), 'File Excel': xlsx.getUrl(), 'Kế hoạch': kh ? kh.getUrl() : '' });
+  return { L, pdf, xlsx, pdfBlob, xlsxBlob, kh, khBlob, sheetUrl: file.getUrl() };
 }
 
 // Sheet "Chuyển khoản". Tìm vị trí theo chữ trong ô (không theo địa chỉ cố định) để kế toán đổi mẫu nhẹ vẫn chạy.
@@ -995,6 +1009,121 @@ function guiFile_(blob, caption, file) {
   if (r.code !== 200) send_('Không gửi được file qua Telegram. Mở trong Drive: ' + file.getUrl());
 }
 
+/* ======================= KẾ HOẠCH ĐI CÔNG TÁC (Word, trình bày theo NĐ 30/2020/NĐ-CP) ======================= */
+
+// Tổng hợp nội dung Kế hoạch từ các chuyến của tháng (không đụng Sheet).
+function lapKeHoach_(d) {
+  const cfg = d.cfg;
+  const khac = a => a.filter((x, i) => x && a.indexOf(x) === i);
+  const nguoi = khac([cfg.nguoiDeNghi].concat(...d.trips.map(t => t.nguoi)));
+  const tu = d.trips.map(t => t.tu).sort()[0], den = d.trips.map(t => t.den).sort().pop();
+  const diaDiem = khac(d.trips.map(t => t.tinh)).join(', ');
+  const nd = khac(d.trips.map(t => t.nd)).join('; ');
+  const m = +d.thang.slice(0, 2);
+  return {
+    ten: cfg.nguoiDeNghi, boPhan: cfg.boPhan, diaDiem: diaDiem,
+    nguoi: nguoi.map(ten => { const p = d.ns.find(x => x.ten === ten) || {}; return { ten: ten, chucVu: p.cv || p.bp || cfg.boPhan }; }),
+    thoiGian: tu === den ? 'Ngày ' + ngayVB_(tu) : 'Từ ngày ' + ngayVB_(tu) + ' đến ngày ' + ngayVB_(den),
+    noiDung: nd ? nd + (diaDiem ? ' tại ' + diaDiem : '') : '',
+    phuongTien: khac(d.trips.map(t => t.pt)).join(' + '),
+    trichYeu: 'Đi công tác tháng ' + m + ' năm ' + d.thang.slice(3),
+  };
+}
+
+// NĐ 30: ngày nhỏ hơn 10 và tháng 1, 2 thì thêm số 0 phía trước.
+function ngay2_(iso) { const m = +iso.slice(5, 7); return { d: iso.slice(8, 10), m: m <= 2 ? '0' + m : String(m), y: iso.slice(0, 4) }; }
+function ngayVB_(iso) { const x = ngay2_(iso); return x.d + '/' + x.m + '/' + x.y; }
+function ngayKy_(noiKy, iso) { const x = ngay2_(iso); return noiKy + ', ngày ' + x.d + ' tháng ' + x.m + ' năm ' + x.y; }
+
+// Tạo file .docx trực tiếp (không cần mẫu): A4 dọc, lề trên/dưới 20 mm, trái 30 mm, phải 15 mm,
+// Times New Roman; quốc hiệu 12 in hoa đậm, tiêu ngữ 13 đậm có gạch dưới bằng độ dài dòng chữ;
+// tên cơ quan in hoa đậm, gạch dưới 1/3–1/2 dòng chữ; tên loại + trích yếu 14 đậm; nội dung 13, căn đều, lùi đầu dòng 1 cm;
+// địa danh – ngày tháng 13 nghiêng; chức vụ người ký in hoa đậm, họ tên đậm.
+function taoKeHoachDocx_(kh, cfg, hn, tenFile) {
+  const W = 9354, L = 3969, R = W - L, LE = 57;   // twip: vùng chữ 16,5 cm; cột trái 7 cm; lề ô 0,1 cm
+  const e = v => String(v === null || v === undefined ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const r = (t, o) => {
+    o = o || {};
+    const pr = (o.b ? '<w:b/><w:bCs/>' : '') + (o.i ? '<w:i/><w:iCs/>' : '') + '<w:sz w:val="' + (o.sz || 13) * 2 + '"/><w:szCs w:val="' + (o.sz || 13) * 2 + '"/>';
+    return '<w:r><w:rPr>' + pr + '</w:rPr><w:t xml:space="preserve">' + e(t) + '</w:t></w:r>';
+  };
+  const p = (runs, o) => {
+    o = o || {};
+    let pr = o.giu ? '<w:keepNext/>' : '';
+    if (o.gach) pr += '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="000000"/></w:pBdr>';
+    pr += '<w:spacing w:before="' + (o.tr || 0) + '" w:after="' + (o.sau || 0) + '" w:line="' + (o.dong || 240) + '" w:lineRule="auto"/>';
+    if (o.le || o.thut) pr += '<w:ind w:left="' + (o.le || 0) + '" w:right="' + (o.le || 0) + '"' + (o.thut ? ' w:firstLine="' + o.thut + '"' : '') + '/>';
+    pr += '<w:jc w:val="' + (o.jc || 'both') + '"/>';
+    if (o.gach) pr += '<w:rPr><w:sz w:val="4"/><w:szCs w:val="4"/></w:rPr>';
+    return '<w:p><w:pPr>' + pr + '</w:pPr>' + (Array.isArray(runs) ? runs.join('') : runs || '') + '</w:p>';
+  };
+  // đường kẻ ngang dài `dai` twip, đặt giữa ô/vùng rộng `rong`
+  const gach = (dai, rong) => p('', { gach: true, le: Math.max(0, Math.round((rong - dai) / 2)), jc: 'center' });
+  const vien = v => '<w:tblBorders>' + ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(k => '<w:' + k + ' w:val="' + (v ? 'single' : 'nil') + '"' + (v ? ' w:sz="4" w:space="0" w:color="000000"' : '') + '/>').join('') + '</w:tblBorders>';
+  const bang = (ws, hang, coVien, o) => {
+    o = o || {};
+    return '<w:tbl><w:tblPr><w:tblW w:w="' + ws.reduce((a, b) => a + b, 0) + '" w:type="dxa"/><w:jc w:val="center"/>' + vien(coVien) +
+      '<w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="' + LE + '" w:type="dxa"/><w:right w:w="' + LE + '" w:type="dxa"/></w:tblCellMar></w:tblPr>' +
+      '<w:tblGrid>' + ws.map(w => '<w:gridCol w:w="' + w + '"/>').join('') + '</w:tblGrid>' +
+      hang.map(cs => '<w:tr>' + (o.khongTach ? '<w:trPr><w:cantSplit/></w:trPr>' : '') +
+        cs.map((c, j) => '<w:tc><w:tcPr><w:tcW w:w="' + ws[j] + '" w:type="dxa"/><w:vAlign w:val="' + (o.giua ? 'center' : 'top') + '"/></w:tcPr>' + c + '</w:tc>').join('') + '</w:tr>').join('') +
+      '</w:tbl>';
+  };
+
+  // 1. Đầu văn bản: tên cơ quan (trái) — quốc hiệu, tiêu ngữ, địa danh – ngày tháng (phải)
+  const tenCty = String(cfg.tenCongTy || '').split('|').map(x => x.trim().toUpperCase()).filter(Boolean);
+  const dongDai = Math.max.apply(null, [10].concat(tenCty.map(x => x.length)));
+  const trai = (tenCty.length ? tenCty.map(x => p(r(x, { b: true, sz: 12 }), { jc: 'center' })).join('') : p('', { jc: 'center' })) +
+    gach(Math.min(L - 2 * LE, Math.max(1200, Math.round(dongDai * 150 * 0.45))), L - 2 * LE);
+  const phai = p(r('CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM', { b: true, sz: 12 }), { jc: 'center' }) +
+    p(r('Độc lập - Tự do - Hạnh phúc', { b: true, sz: 13 }), { jc: 'center' }) +
+    gach(3183, R - 2 * LE) +
+    p(r(ngayKy_(cfg.noiKy, hn), { i: true, sz: 13 }), { jc: 'center', tr: 240 });
+  let x = bang([L, R], [[trai, phai]], false);
+
+  // 2. Tên loại và trích yếu
+  x += p(r('KẾ HOẠCH', { b: true, sz: 14 }), { jc: 'center', tr: 480 }) +
+    p(r(kh.trichYeu, { b: true, sz: 14 }), { jc: 'center' }) + gach(1600, W);
+  x += p([r('Kính gửi: ', { sz: 14 }), r(cfg.kinhGui, { sz: 14 })], { jc: 'center', tr: 240, sau: 120 });
+
+  // 3. Nội dung
+  const dong = (nhan, giaTri, o) => p([r(nhan + ' '), r(giaTri, o)], { thut: 567, tr: 120, dong: 276 });
+  x += dong('Tên tôi là:', kh.ten, { b: true }) + dong('Bộ phận:', kh.boPhan) + dong('Địa điểm công tác:', kh.diaDiem) +
+    dong('Số người tham gia đi công tác:', ('0' + kh.nguoi.length).slice(-2) + ' người, gồm:');
+  const o = (t, jc, b) => p(r(t, { b: b }), { jc: jc, tr: 40, sau: 40 });
+  x += bang([850, 4536, 3402], [[o('STT', 'center', true), o('Họ và tên', 'center', true), o('Chức vụ', 'center', true)]]
+    .concat(kh.nguoi.map((n, i) => [o(String(i + 1), 'center'), o(n.ten, 'left'), o(n.chucVu, 'center')])), true, { giua: true });
+  x += dong('Thời gian công tác:', kh.thoiGian) + dong('Nội dung công tác:', kh.noiDung) + dong('Phương tiện đi công tác:', kh.phuongTien) +
+    p(r('Kính trình Ban lãnh đạo, Trưởng bộ phận xem xét, phê duyệt kế hoạch công tác./.'), { thut: 567, tr: 120, dong: 276 });
+
+  // 4. Chữ ký
+  const ky = (chucVu, ten) => p(r(chucVu, { b: true }), { jc: 'center' }) + p(r('(Ký, ghi rõ họ tên)', { i: true, sz: 12 }), { jc: 'center' }) +
+    [1, 2, 3].map(() => p('', { jc: 'center' })).join('') + p(r(ten || '', { b: true }), { jc: 'center' });
+  x += p('', { tr: 240 }) + bang([3118, 3118, 3118], [[ky('NGƯỜI ĐỀ NGHỊ', kh.ten), ky('TRƯỞNG BỘ PHẬN', cfg.truongBoPhan), ky('NGƯỜI PHÊ DUYỆT', cfg.nguoiDuyet)]], false, { khongTach: true });
+
+  const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const dau = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const docXml = dau + '<w:document ' + W_NS + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>' + x +
+    '<w:sectPr>' + (cfg.maMau ? '<w:footerReference w:type="default" r:id="rId2"/>' : '') + '<w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="851" w:bottom="1134" w:left="1701" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>';
+  const font = '<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="Times New Roman" w:cs="Times New Roman"/>';
+  const styles = dau + '<w:styles ' + W_NS + '><w:docDefaults><w:rPrDefault><w:rPr>' + font + '<w:sz w:val="26"/><w:szCs w:val="26"/><w:lang w:val="vi-VN" w:eastAsia="en-US" w:bidi="ar-SA"/></w:rPr></w:rPrDefault>' +
+    '<w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>' +
+    '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>' +
+    '<w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style></w:styles>';
+  const types = dau + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+    '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+    (cfg.maMau ? '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' : '') + '</Types>';
+  const rels = dau + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
+  const docRels = dau + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+    (cfg.maMau ? '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' : '') + '</Relationships>';
+  const b = (noiDung, ten) => Utilities.newBlob(noiDung, 'application/xml', ten);
+  const tep = [b(types, '[Content_Types].xml'), b(rels, '_rels/.rels'), b(docXml, 'word/document.xml'), b(docRels, 'word/_rels/document.xml.rels'), b(styles, 'word/styles.xml')];
+  if (cfg.maMau) tep.push(b(dau + '<w:ftr ' + W_NS + '>' + p(r('Mẫu: ' + cfg.maMau, { sz: 10 }), { jc: 'left' }) + '</w:ftr>', 'word/footer1.xml'));
+  return Utilities.zip(tep, tenFile)
+    .setContentType('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+}
+
 /* ======================= DỮ LIỆU ======================= */
 
 let C_ = {}; // bộ nhớ đệm trong 1 lần chạy
@@ -1071,6 +1200,8 @@ function cauHinh_() {
     ndMacDinh: s('Nội dung mặc định'), mucDich: s('Mục đích') || 'Thanh toán công tác phí tháng {thang}',
     noiKy: s('Nơi ký') || 'Hà Nội', idMau: idMau, maxKhongHD: so('Tối đa khoản không HĐ/tháng', 2),
     plMoiNguoi: /^co/.test(boDau_(s('Phụ lục mỗi người 1 dòng'))),
+    tenCongTy: s('Tên công ty'), kinhGui: s('Kính gửi (kế hoạch)') || 'Ban lãnh đạo Công ty',
+    truongBoPhan: s('Trưởng bộ phận'), nguoiDuyet: s('Người phê duyệt'), maMau: s('Mã mẫu kế hoạch'),
   };
   return C_.cfg;
 }
@@ -1080,6 +1211,7 @@ function nhanSu_() {
     C_.ns = docBang_(TAB.NHANSU).rows.map(r => ({
       ten: String(r['Họ tên']).trim().replace(/\s+/g, ' '), goi: String(r['Tên gọi'] || '').trim(),
       bp: String(r['Bộ phận'] || '').trim(), stk: String(r['Số tài khoản'] || '').trim(), nh: String(r['Ngân hàng'] || '').trim(),
+      cv: String(r['Chức vụ'] || '').trim(),
     })).filter(p => p.ten);
   }
   return C_.ns;
@@ -1482,6 +1614,7 @@ function thuXuat() {
   const thang = thangXuatMacDinh_(homNay_());
   const kq = xuatThang_(thang);
   Logger.log('Tháng ' + thang + '\nSheet: ' + kq.sheetUrl + '\nPDF: ' + kq.pdf.getUrl() + '\nExcel: ' + kq.xlsx.getUrl() +
+    '\nKế hoạch (Word): ' + (kq.kh ? kq.kh.getUrl() : 'chưa tạo được') +
     '\nChuyển khoản: ' + fmt_(kq.L.tongCK) + ' · Tiền mặt: ' + fmt_(kq.L.tongTM) + (kq.L.canhBao.length ? '\nLưu ý: ' + kq.L.canhBao.join(' | ') : ''));
 }
 
