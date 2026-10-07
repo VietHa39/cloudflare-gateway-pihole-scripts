@@ -1,6 +1,0 @@
-{
-  "name": "ctp-bot-tests",
-  "private": true,
-  "type": "commonjs",
-  "scripts": { "test": "node test/run_tests.js" }
-}
