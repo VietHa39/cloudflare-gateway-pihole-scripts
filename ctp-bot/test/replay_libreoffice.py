@@ -1,7 +1,7 @@
 """Dựng lại file xuất trên file mẫu .xlsx THẬT bằng LibreOffice, từ các thao tác Code.gs đã làm trong bản giả lập.
 
   soffice --headless --invisible --norestore --accept="socket,host=localhost,port=2002;urp;" &
-  python3 replay_libreoffice.py mau.xlsx ops.json out.pdf
+  python3 replay_libreoffice.py mau.xlsx ops.json out.pdf ["20 15 20 30"]
 
 LibreOffice tự tính lại mọi công thức (kể cả công thức gốc của mẫu, tự dời khi chèn/xóa dòng như Google Sheets),
 nên đây là phép thử độc lập cho tổng tiền, và cho ra bản PDF để xem trước.
@@ -27,7 +27,7 @@ def connect():
     raise SystemExit('Không kết nối được LibreOffice')
 
 
-def main(src, ops_path, out_pdf):
+def main(src, ops_path, out_pdf, le=None):
     ctx = connect()
     desktop = ctx.ServiceManager.createInstanceWithContext('com.sun.star.frame.Desktop', ctx)
     doc = desktop.loadComponentFromURL(uno.systemPathToFileUrl(os.path.abspath(src)), '_blank', 0, (pv('Hidden', True),))
@@ -97,6 +97,13 @@ def main(src, ops_path, out_pdf):
         else:
             raise SystemExit('thao tác lạ: ' + op)
     doc.calculateAll()
+    # Giả lập export của Google: lề (mm) + co vừa khổ ngang (fitw=true), căn giữa ngang
+    if le:
+        t, r, b, l = le
+        for name in sheets.ElementNames:
+            ps = doc.StyleFamilies.getByName('PageStyles').getByName(sheets.getByName(name).PageStyle)
+            ps.TopMargin, ps.RightMargin, ps.BottomMargin, ps.LeftMargin = [int(v * 100) for v in (t, r, b, l)]
+            ps.ScaleToPagesX, ps.ScaleToPagesY, ps.CenterHorizontally = 1, 0, True
 
     # In ra các con số chính để đối chiếu
     for name in [s for s in sheets.ElementNames]:
@@ -119,4 +126,5 @@ def main(src, ops_path, out_pdf):
 
 
 if __name__ == '__main__':
-    main(*sys.argv[1:4])
+    # tùy chọn thứ 4: lề "trên phải dưới trái" (mm) để giả lập PDF Google xuất
+    main(*sys.argv[1:4], le=[float(x) for x in sys.argv[4].split()] if len(sys.argv) > 4 else None)

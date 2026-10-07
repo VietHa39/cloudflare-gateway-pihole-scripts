@@ -44,6 +44,7 @@ const CAUHINH_MAC_DINH = [
   ['Trưởng bộ phận', '', 'Họ tên, in ở chữ ký Kế hoạch công tác'],
   ['Người phê duyệt', '', 'Họ tên, in ở chữ ký Kế hoạch công tác'],
   ['Mã mẫu kế hoạch', '', 'Ghi ở chân trang Kế hoạch, vd: CTP 01 (để trống = không ghi)'],
+  ['Lề PDF bảng kê (mm)', '20 15 20 30', 'Trên, phải, dưới, trái. Mặc định theo NĐ 30: 20 15 20 30'],
 ];
 
 const LOAI = { KS: 'Khách sạn', XX: 'Xăng xe', TK: 'Tiếp khách', KH: 'Khác' };
@@ -801,7 +802,7 @@ function xuatThang_(thang) {
   if (isFinite(docTong) && docTong > 0 && Math.round(docTong) !== Math.round(L.tongCK)) {
     L.canhBao.push('Tổng trong file (' + fmt_(docTong) + ') khác tổng bot tính (' + fmt_(L.tongCK) + ') — kiểm tra file trước khi in.');
   }
-  const pdfBlob = taiFile_(ss.getId(), 'pdf').setName(ten + '.pdf');
+  const pdfBlob = taiFile_(ss.getId(), 'pdf', d.cfg.lePdf).setName(ten + '.pdf');
   const xlsxBlob = taiFile_(ss.getId(), 'xlsx').setName(ten + '.xlsx');
   const pdf = thuMuc.createFile(pdfBlob), xlsx = thuMuc.createFile(xlsxBlob);
   // Kế hoạch đi công tác (Word). Lỗi ở đây không chặn bảng kê.
@@ -984,9 +985,13 @@ function cotTieuDe_(hang, map, tenSheet) {
 }
 function cotChu_(n) { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
 
-function taiFile_(id, dang) {
+// le: [trên, phải, dưới, trái] (mm); Google nhận lề theo inch.
+function taiFile_(id, dang, le) {
+  const inch = mm => (mm / 25.4).toFixed(2);
+  le = le || [20, 15, 20, 30];
   const q = dang === 'pdf'
-    ? 'format=pdf&size=A4&portrait=true&fitw=true&gridlines=false&printtitle=false&sheetnames=false&pagenum=UNDEFINED&fzr=false&horizontal_alignment=CENTER&top_margin=0.4&bottom_margin=0.4&left_margin=0.3&right_margin=0.3'
+    ? 'format=pdf&size=A4&portrait=true&fitw=true&gridlines=false&printtitle=false&sheetnames=false&pagenum=UNDEFINED&fzr=false&horizontal_alignment=CENTER' +
+      '&top_margin=' + inch(le[0]) + '&right_margin=' + inch(le[1]) + '&bottom_margin=' + inch(le[2]) + '&left_margin=' + inch(le[3])
     : 'format=xlsx';
   const res = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' + id + '/export?' + q,
     { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
@@ -1210,6 +1215,7 @@ function cauHinh_() {
     plMoiNguoi: /^co/.test(boDau_(s('Phụ lục mỗi người 1 dòng'))),
     tenCongTy: s('Tên công ty'), kinhGui: s('Kính gửi (kế hoạch)') || 'Ban lãnh đạo Công ty',
     truongBoPhan: s('Trưởng bộ phận'), nguoiDuyet: s('Người phê duyệt'), maMau: s('Mã mẫu kế hoạch'),
+    lePdf: (m => (m && m.length === 4 && m.every(x => +x >= 5 && +x <= 50) ? m.map(Number) : [20, 15, 20, 30]))(s('Lề PDF bảng kê (mm)').match(/\d+(?:[.,]\d+)?/g)),
   };
   return C_.cfg;
 }
