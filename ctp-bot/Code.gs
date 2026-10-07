@@ -44,7 +44,7 @@ const CAUHINH_MAC_DINH = [
   ['Trưởng bộ phận', '', 'Họ tên, in ở chữ ký Kế hoạch công tác'],
   ['Người phê duyệt', '', 'Họ tên, in ở chữ ký Kế hoạch công tác'],
   ['Mã mẫu kế hoạch', '', 'Ghi ở chân trang Kế hoạch, vd: CTP 01 (để trống = không ghi)'],
-  ['Lề PDF bảng kê (mm)', '20 15 20 30', 'Trên, phải, dưới, trái. Mặc định theo NĐ 30: 20 15 20 30'],
+  ['Lề PDF bảng kê (mm)', '15 10 15 20', 'Trên, phải, dưới, trái. Lề rộng hơn thì chữ nhỏ hơn (theo NĐ 30 là 20 15 20 30)'],
 ];
 
 const LOAI = { KS: 'Khách sạn', XX: 'Xăng xe', TK: 'Tiếp khách', KH: 'Khác' };
@@ -988,7 +988,7 @@ function cotChu_(n) { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = St
 // le: [trên, phải, dưới, trái] (mm); Google nhận lề theo inch.
 function taiFile_(id, dang, le) {
   const inch = mm => (mm / 25.4).toFixed(2);
-  le = le || [20, 15, 20, 30];
+  le = le || [15, 10, 15, 20];
   const q = dang === 'pdf'
     ? 'format=pdf&size=A4&portrait=true&fitw=true&gridlines=false&printtitle=false&sheetnames=false&pagenum=UNDEFINED&fzr=false&horizontal_alignment=CENTER' +
       '&top_margin=' + inch(le[0]) + '&right_margin=' + inch(le[1]) + '&bottom_margin=' + inch(le[2]) + '&left_margin=' + inch(le[3])
@@ -1215,7 +1215,7 @@ function cauHinh_() {
     plMoiNguoi: /^co/.test(boDau_(s('Phụ lục mỗi người 1 dòng'))),
     tenCongTy: s('Tên công ty'), kinhGui: s('Kính gửi (kế hoạch)') || 'Ban lãnh đạo Công ty',
     truongBoPhan: s('Trưởng bộ phận'), nguoiDuyet: s('Người phê duyệt'), maMau: s('Mã mẫu kế hoạch'),
-    lePdf: (m => (m && m.length === 4 && m.every(x => +x >= 5 && +x <= 50) ? m.map(Number) : [20, 15, 20, 30]))(s('Lề PDF bảng kê (mm)').match(/\d+(?:[.,]\d+)?/g)),
+    lePdf: (m => (m && m.length === 4 && m.every(x => +x >= 5 && +x <= 50) ? m.map(Number) : [15, 10, 15, 20]))(s('Lề PDF bảng kê (mm)').match(/\d+(?:[.,]\d+)?/g)),
   };
   return C_.cfg;
 }

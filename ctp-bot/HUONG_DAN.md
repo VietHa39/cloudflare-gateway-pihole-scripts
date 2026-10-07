@@ -76,7 +76,7 @@ Nếu sau này kế toán đổi mẫu, bạn chỉ cần làm lại bước 2 r
    | Trưởng bộ phận | Họ tên trưởng bộ phận (ký ở Kế hoạch công tác) |
    | Người phê duyệt | Họ tên người phê duyệt |
    | Mã mẫu kế hoạch | Ví dụ `CTP 01` (ghi ở chân trang). Để trống nếu không cần |
-   | Lề PDF bảng kê (mm) | Mặc định `20 15 20 30` (trên, phải, dưới, trái) theo NĐ 30. Lề càng rộng thì chữ càng nhỏ, vì bảng được co cho vừa khổ ngang. Thấy chữ nhỏ quá thì đổi thành `15 10 15 20` |
+   | Lề PDF bảng kê (mm) | Mặc định `15 10 15 20` (trên, phải, dưới, trái). Lề càng rộng thì chữ càng nhỏ, vì bảng được co cho vừa khổ ngang. Muốn lề đúng NĐ 30 thì gõ `20 15 20 30` |
    | Các mục khác | Để nguyên |
 
    **Tab NhanSu**: mỗi người 1 dòng. **Dòng đầu tiên là bạn**, họ tên viết giống hệt ô "Người đề nghị".

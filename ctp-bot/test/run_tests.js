@@ -537,12 +537,12 @@ if (process.env.KH_OUT) fs.writeFileSync(process.env.KH_OUT, JSON.stringify(khZi
   check('ký tự đặc biệt được thoát trong XML', /A &amp; B &lt;x&gt;/.test(taoKeHoachDocx_(Object.assign({}, kh0, { diaDiem: 'A & B <x>' }), cauHinh_(), '2026-02-03', 'b.docx').files.find(f => f.name === 'word/document.xml').data));
 }
 check('export PDF A4 dọc vừa khổ ngang', G.exports_.some(x => /format=pdf/.test(x.q) && /size=A4/.test(x.q) && /portrait=true/.test(x.q) && /fitw=true/.test(x.q) && x.auth === 'Bearer oauth-test'));
-check('PDF lề mặc định theo NĐ 30 (20/15/20/30 mm)', G.exports_.some(x => /format=pdf/.test(x.q) && /top_margin=0\.79&right_margin=0\.59&bottom_margin=0\.79&left_margin=1\.18/.test(x.q)), G.exports_.map(x => x.q));
+check('PDF lề mặc định 15/10/15/20 mm', G.exports_.some(x => /format=pdf/.test(x.q) && /top_margin=0\.59&right_margin=0\.39&bottom_margin=0\.59&left_margin=0\.79/.test(x.q)), G.exports_.map(x => x.q));
 setCfg('Lề PDF bảng kê (mm)', '25, 20, 25, 35'); xoaCache_();
 eq('lề PDF đọc từ CauHinh', cauHinh_().lePdf, [25, 20, 25, 35]);
 setCfg('Lề PDF bảng kê (mm)', 'rộng ra'); xoaCache_();
-eq('lề PDF ghi sai → mặc định', cauHinh_().lePdf, [20, 15, 20, 30]);
-setCfg('Lề PDF bảng kê (mm)', '20 15 20 30'); xoaCache_();
+eq('lề PDF ghi sai → mặc định', cauHinh_().lePdf, [15, 10, 15, 20]);
+setCfg('Lề PDF bảng kê (mm)', '15 10 15 20'); xoaCache_();
 check('export xlsx', G.exports_.some(x => x.q === 'format=xlsx'));
 check('LichSuXuat', tab('LichSuXuat').length === 1 && tab('LichSuXuat')[0]['Chuyển khoản'] === 8368100);
 
