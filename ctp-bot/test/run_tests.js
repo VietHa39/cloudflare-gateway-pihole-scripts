@@ -491,6 +491,10 @@ check('/xuat mặc định (ngày 3/2) = tháng 01/2026', /Đang tạo file thá
 check('không có lỗi khi xuất', !/⚠️ (?!Lưu ý)/.test(r.replace(/⚠️ Lưu ý[\s\S]*/, '')), r);
 const docs = G.tg.filter(x => x.method === 'sendDocument');
 check('gửi 3 file (Kế hoạch Word + bảng kê PDF + Excel)', docs.length === 3 && /\.docx$/.test(docs[0].payload.document.name) && /\.pdf$/.test(docs[1].payload.document.name) && /\.xlsx$/.test(docs[2].payload.document.name), docs.map(d => d.payload.document && d.payload.document.name));
+check('tên file tiếng Việt không dấu', docs.every(d => /^[\x20-\x7e]+$/.test(d.payload.document.name)), docs.map(d => d.payload.document.name));
+eq('tên file bảng kê', docs[1].payload.document.name, 'CTP 01-2026 - Nguyen Van An (xuat 2026-02-03 09h00).pdf');
+eq('tên file Kế hoạch', docs[0].payload.document.name, 'Ke hoach cong tac 01-2026 - Nguyen Van An.docx');
+eq('tenFile_', tenFile_('Đỗ Khánh Huyền: Kế hoạch/Tháng 10 "Ưu tiên"?'), 'Do Khanh Huyen- Ke hoach-Thang 10 -Uu tien--');
 check('caption có tổng', docs[1] && /Chuyển khoản: 8.368.100đ/.test(docs[1].payload.caption) && /Tiền mặt: 1.000.000đ \(1 khoản\)/.test(docs[1].payload.caption), docs[1] && docs[1].payload.caption);
 // Kế hoạch đi công tác (.docx tự tạo, trình bày theo NĐ 30)
 const khZip = docs[0].payload.document;

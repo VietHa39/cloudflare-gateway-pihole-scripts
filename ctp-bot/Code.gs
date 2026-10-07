@@ -774,7 +774,7 @@ function xuatThang_(thang) {
   if (!d.cfg.idMau) throw new Error('Chưa điền "ID file mẫu" trong tab CauHinh (xem hướng dẫn, bước 2).');
   const L = lapXuat_(d);
   L.canhBao = L.canhBao.concat(d.loiNgay);
-  const ten = 'CTP ' + thang.replace('/', '-') + ' - ' + d.cfg.nguoiDeNghi + ' (xuất ' + luc_('yyyy-MM-dd HH') + 'h' + luc_('mm') + ')';
+  const ten = tenFile_('CTP ' + thang.replace('/', '-') + ' - ' + d.cfg.nguoiDeNghi + ' (xuat ' + luc_('yyyy-MM-dd HH') + 'h' + luc_('mm') + ')');
   let mau;
   try { mau = DriveApp.getFileById(d.cfg.idMau); } catch (e) {
     throw new Error('Không mở được file mẫu: "ID file mẫu" trong CauHinh sai, hoặc file không thuộc tài khoản Google này.');
@@ -810,7 +810,7 @@ function xuatThang_(thang) {
   try {
     if (!d.cfg.tenCongTy) L.canhBao.push('Chưa điền "Tên công ty" trong CauHinh — đầu Kế hoạch công tác đang để trống.');
     if (!d.cfg.truongBoPhan || !d.cfg.nguoiDuyet) L.canhBao.push('Chưa điền "Trưởng bộ phận" / "Người phê duyệt" trong CauHinh — chữ ký Kế hoạch còn trống tên.');
-    khBlob = taoKeHoachDocx_(lapKeHoach_(d), d.cfg, hn, 'Ke hoach cong tac ' + thang.replace('/', '-') + ' - ' + d.cfg.nguoiDeNghi + '.docx');
+    khBlob = taoKeHoachDocx_(lapKeHoach_(d), d.cfg, hn, tenFile_('Ke hoach cong tac ' + thang.replace('/', '-') + ' - ' + d.cfg.nguoiDeNghi) + '.docx');
     kh = thuMuc.createFile(khBlob);
   } catch (e) { ghiLoi_(e); L.canhBao.push('Chưa tạo được Kế hoạch công tác: ' + e.message); }
   themDong_(docBang_(TAB.LICHSU), { 'Thời điểm': luc_(), 'Tháng': thang, 'Chuyển khoản': L.tongCK, 'Tiền mặt': L.tongTM, 'File PDF': pdf.getUrl(), 'File Excel': xlsx.getUrl(), 'Kế hoạch': kh ? kh.getUrl() : '' });
@@ -1312,6 +1312,11 @@ function moTaCP_(c) {
 
 /* ======================= ĐỌC CHỮ NGƯỜI DÙNG GÕ ======================= */
 
+// Tên file: tiếng Việt không dấu, bỏ ký tự máy tính/máy in hay báo lỗi ("Hà Quốc Việt" → "Ha Quoc Viet").
+function tenFile_(s) {
+  return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    .replace(/[\\/:*?"<>|]/g, '-').replace(/[^\x20-\x7e]/g, '').replace(/\s+/g, ' ').trim();
+}
 function boDau_(s) { return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase(); }
 function chuan_(v) { return boDau_(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim().replace(/:$/, '').trim(); }
 function laXoa_(v) { return /^xoa/.test(boDau_(v || '').trim()); }
