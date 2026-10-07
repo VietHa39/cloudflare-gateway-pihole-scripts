@@ -523,6 +523,17 @@ if (process.env.KH_OUT) fs.writeFileSync(process.env.KH_OUT, JSON.stringify(khZi
   eq('ngayKy_ theo NĐ 30', ngayKy_('Hà Nội', '2026-07-29'), 'Hà Nội, ngày 29 tháng 7 năm 2026');
   const kh1 = lapKeHoach_(Object.assign(duLieuThang_('01/2026'), { trips: duLieuThang_('01/2026').trips.slice(0, 1) }));
   eq('1 chuyến 1 ngày → "Ngày …"', kh1.thoiGian, 'Ngày 05/01/2026');
+  const dTh = duLieuThang_('01/2026');
+  const nhieuND = ['Triển khai eNetViet', 'điểm danh', 'Tập huấn', 'tập huấn', 'SMAS cập nhật'];
+  const kh2 = lapKeHoach_(Object.assign({}, dTh, { trips: dTh.trips.slice(0, 5).map((t, i) => Object.assign({}, t, { nd: nhieuND[i] })) }));
+  eq('nội dung nhiều mục: "A, b và c" (gộp trùng hoa/thường, giữ viết tắt)', kh2.noiDung, 'Triển khai eNetViet, điểm danh, tập huấn và SMAS cập nhật tại Phú Thọ');
+  const kh3 = lapKeHoach_(Object.assign({}, dTh, { trips: dTh.trips.slice(0, 2).map((t, i) => Object.assign({}, t, { nd: ['điểm danh', 'eNetViet'][i] })) }));
+  eq('mục đầu viết hoa chữ đầu (trừ tên riêng như eNetViet)', kh3.noiDung, 'Điểm danh và eNetViet tại Phú Thọ');
+  const kXml0 = taoKeHoachDocx_(kh0, Object.assign({}, cauHinh_(), { tenCongTy: '' }), '2026-02-03', 'c.docx').files.find(f => f.name === 'word/document.xml').data;
+  const kXml1 = taoKeHoachDocx_(kh0, Object.assign({}, cauHinh_(), { tenCongTy: 'CÔNG TY A|CÔNG NGHỆ B' }), '2026-02-03', 'd.docx').files.find(f => f.name === 'word/document.xml').data;
+  eq('chưa có tên công ty → chỉ còn 2 gạch (tiêu ngữ, trích yếu)', (kXml0.match(/<w:pBdr>/g) || []).length, 2);
+  eq('có tên công ty → 3 gạch', (kXml1.match(/<w:pBdr>/g) || []).length, 3);
+  check('tên công ty 2 dòng', /CÔNG TY A<\/w:t>/.test(kXml1) && /CÔNG NGHỆ B<\/w:t>/.test(kXml1));
   check('ký tự đặc biệt được thoát trong XML', /A &amp; B &lt;x&gt;/.test(taoKeHoachDocx_(Object.assign({}, kh0, { diaDiem: 'A & B <x>' }), cauHinh_(), '2026-02-03', 'b.docx').files.find(f => f.name === 'word/document.xml').data));
 }
 check('export PDF A4 dọc vừa khổ ngang', G.exports_.some(x => /format=pdf/.test(x.q) && /size=A4/.test(x.q) && /portrait=true/.test(x.q) && /fitw=true/.test(x.q) && x.auth === 'Bearer oauth-test'));

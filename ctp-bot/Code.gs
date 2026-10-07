@@ -1018,7 +1018,14 @@ function lapKeHoach_(d) {
   const nguoi = khac([cfg.nguoiDeNghi].concat(...d.trips.map(t => t.nguoi)));
   const tu = d.trips.map(t => t.tu).sort()[0], den = d.trips.map(t => t.den).sort().pop();
   const diaDiem = khac(d.trips.map(t => t.tinh)).join(', ');
-  const nd = khac(d.trips.map(t => t.nd)).join('; ');
+  // Nội dung: "Triển khai eNetViet, điểm danh và tập huấn" — gộp trùng không phân biệt hoa/thường,
+  // chỉ viết hoa chữ đầu câu (giữ nguyên tên riêng/viết tắt như eNetViet, SMAS).
+  const ndKey = [], nds = [];
+  d.trips.forEach(t => { const k = boDau_(t.nd).trim(); if (t.nd && ndKey.indexOf(k) < 0) { ndKey.push(k); nds.push(t.nd.trim()); } });
+  const thuongDau = x => x.length > 1 && x.charAt(1) === x.charAt(1).toLowerCase() && x.charAt(0) !== x.charAt(0).toLowerCase();
+  const hoaDau = x => x.length > 1 && x.charAt(1) === x.charAt(1).toLowerCase() && x.charAt(0) === x.charAt(0).toLowerCase();
+  const ndCau = nds.map((x, i) => (i && thuongDau(x) ? x.charAt(0).toLowerCase() + x.slice(1) : !i && hoaDau(x) ? x.charAt(0).toUpperCase() + x.slice(1) : x));
+  const nd = ndCau.length > 1 ? ndCau.slice(0, -1).join(', ') + ' và ' + ndCau[ndCau.length - 1] : ndCau.join('');
   const m = +d.thang.slice(0, 2);
   return {
     ten: cfg.nguoiDeNghi, boPhan: cfg.boPhan, diaDiem: diaDiem,
@@ -1073,8 +1080,9 @@ function taoKeHoachDocx_(kh, cfg, hn, tenFile) {
   // 1. Đầu văn bản: tên cơ quan (trái) — quốc hiệu, tiêu ngữ, địa danh – ngày tháng (phải)
   const tenCty = String(cfg.tenCongTy || '').split('|').map(x => x.trim().toUpperCase()).filter(Boolean);
   const dongDai = Math.max.apply(null, [10].concat(tenCty.map(x => x.length)));
-  const trai = (tenCty.length ? tenCty.map(x => p(r(x, { b: true, sz: 12 }), { jc: 'center' })).join('') : p('', { jc: 'center' })) +
-    gach(Math.min(L - 2 * LE, Math.max(1200, Math.round(dongDai * 150 * 0.45))), L - 2 * LE);
+  const trai = tenCty.length
+    ? tenCty.map(x => p(r(x, { b: true, sz: 12 }), { jc: 'center' })).join('') + gach(Math.min(L - 2 * LE, Math.max(1200, Math.round(dongDai * 150 * 0.45))), L - 2 * LE)
+    : p('', { jc: 'center' }); // chưa điền tên công ty: để trống, không kẻ gạch
   const phai = p(r('CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM', { b: true, sz: 12 }), { jc: 'center' }) +
     p(r('Độc lập - Tự do - Hạnh phúc', { b: true, sz: 13 }), { jc: 'center' }) +
     gach(3183, R - 2 * LE) +
